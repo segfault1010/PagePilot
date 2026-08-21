@@ -41,3 +41,16 @@ Matches PLAN.md's testing section. React Testing Library and jsdom are deferred 
 ## D10 — Environment variables are server-only (Phase 1)
 
 `GEMINI_API_KEY` and `GEMINI_MODEL` are documented in `.env.example`, never prefixed with `VITE_`, never imported by client code, and never committed. Production values are set in the Vercel dashboard.
+
+## D11 — UI testing stack activated: jsdom + Testing Library (Phase 2)
+
+PLAN.md names React Testing Library for form/report/error rendering; jsdom and Testing Library were deferred in D9 until UI behavior existed. They are now added as dev dependencies. UI tests live in `tests/ui/`; API and contract tests stay on the node environment via a per-file environment pragma.
+
+## D12 — Static state flow until the API is wired (Phase 2)
+
+With no backend behavior yet, submitting a valid URL runs the presentational phases from PLAN.md ("Checking URL", "Reading page structure", "Preparing UX audit") and then shows the report view populated with the shared sample fixture, clearly labeled as sample data — it never claims to be a real analysis of the entered URL. The failure state is reachable through a footer preview affordance; Phase 3 replaces that with real API error handling. The client makes no network calls in this phase.
+
+## D13 — Client URL normalization is cosmetic, not security (Phase 2)
+
+Client-side validation only normalizes (scheme defaulting to https://) and checks syntax/supported protocol to give fast inline feedback. All security-relevant rules (private destinations, ports, credentials, redirects) remain server-side and arrive with Phase 3+.
+
