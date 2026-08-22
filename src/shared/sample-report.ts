@@ -4,7 +4,7 @@ import type {
   Finding,
   Recommendation,
   Report,
-} from "../../../shared/audit-types";
+} from "./audit-types";
 
 const ALL_CATEGORIES: AuditCategory[] = [
   "clarity",
@@ -55,6 +55,11 @@ function makeRecommendation(title: string): Recommendation {
   };
 }
 
+/**
+ * Contract-valid placeholder report served by the API and rendered by the
+ * client until the real pipeline (Phases 4-5) produces live reports. The UI
+ * labels it as sample data; it never claims to analyze the entered URL.
+ */
 export const sampleReport: Report = {
   source: {
     requestedUrl: "https://example.com/",

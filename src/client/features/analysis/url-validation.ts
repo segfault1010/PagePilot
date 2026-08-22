@@ -1,13 +1,15 @@
+import { enforceUrlPolicy } from "../../../shared/url-policy";
+
 export type UrlValidation =
   | { ok: true; url: string }
   | { ok: false; message: string };
 
-const SUPPORTED_PROTOCOLS = new Set(["http:", "https:"]);
+const SCHEME_PATTERN = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//;
 
 /**
- * Client-side normalization and syntax validation only. The server remains
- * authoritative for security rules (private destinations, ports, redirects)
- * from Phase 3 onward; nothing here performs network validation.
+ * Client-side normalization and validation for fast inline feedback. The
+ * policy rules come from the shared module so client and server agree
+ * exactly; the server remains authoritative. No network validation here.
  */
 export function normalizeAndValidateUrl(raw: string): UrlValidation {
   const trimmed = raw.trim();
@@ -15,32 +17,10 @@ export function normalizeAndValidateUrl(raw: string): UrlValidation {
     return { ok: false, message: "Enter a website URL to analyze." };
   }
 
-  const hasScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(trimmed);
-  const candidate = hasScheme ? trimmed : `https://${trimmed}`;
+  const hasScheme = SCHEME_PATTERN.test(trimmed);
+  const result = enforceUrlPolicy(hasScheme ? trimmed : `https://${trimmed}`);
 
-  let parsed: URL;
-  try {
-    parsed = new URL(candidate);
-  } catch {
-    return {
-      ok: false,
-      message: "That doesn't look like a valid URL. Check for typos.",
-    };
-  }
-
-  if (!SUPPORTED_PROTOCOLS.has(parsed.protocol)) {
-    return {
-      ok: false,
-      message: "Only http:// and https:// URLs are supported.",
-    };
-  }
-
-  if (parsed.hostname.length === 0) {
-    return {
-      ok: false,
-      message: "That doesn't look like a valid URL. Check for typos.",
-    };
-  }
-
-  return { ok: true, url: parsed.href };
+  return result.ok
+    ? { ok: true, url: result.url }
+    : { ok: false, message: result.message };
 }

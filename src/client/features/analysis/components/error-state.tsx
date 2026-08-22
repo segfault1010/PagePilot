@@ -1,7 +1,13 @@
 import type { ApiError } from "../../../../shared/audit-types";
 import { API_ERROR_CODES } from "../../../../shared/audit-types";
+import { NETWORK_ERROR_CODE } from "../api";
 
 const COPY: Record<string, { title: string; description: string }> = {
+  [NETWORK_ERROR_CODE]: {
+    title: "Connection problem",
+    description:
+      "We couldn't reach the analysis service. Check your connection and try again.",
+  },
   [API_ERROR_CODES.invalidUrl]: {
     title: "That URL can't be analyzed",
     description:

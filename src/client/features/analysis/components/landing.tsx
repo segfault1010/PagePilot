@@ -1,4 +1,4 @@
-import { sampleReport } from "../sample-report";
+import { sampleReport } from "../../../../shared/sample-report";
 import { Badge } from "./badge";
 import { BrandMark } from "./brand-mark";
 import { ReportView } from "./report-view";
@@ -7,11 +7,9 @@ import { UrlForm } from "./url-form";
 export function Landing({
   initialUrl,
   onAnalyze,
-  onPreviewFailure,
 }: {
   initialUrl: string;
   onAnalyze: (url: string) => void;
-  onPreviewFailure: () => void;
 }) {
   return (
     <div className="flex min-h-screen flex-col">
@@ -85,15 +83,8 @@ export function Landing({
       </main>
 
       <footer className="border-t border-neutral-900">
-        <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-3 px-6 py-8 text-xs text-neutral-600 sm:flex-row">
+        <div className="mx-auto w-full max-w-6xl px-6 py-8 text-center text-xs text-neutral-600 sm:text-left">
           <p>© 2026 PagePilot</p>
-          <button
-            type="button"
-            onClick={onPreviewFailure}
-            className="underline decoration-neutral-700 underline-offset-4 transition-colors hover:text-neutral-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
-          >
-            Preview the error state
-          </button>
         </div>
       </footer>
     </div>

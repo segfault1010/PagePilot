@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 
 // Presentational phases from PLAN.md. These are honest status steps, not a
-// simulation of model progress.
+// simulation of model progress; completion is driven by the actual API
+// response in App, so the display holds on the last phase if needed.
 const PHASES = [
   "Checking URL",
   "Reading page structure",
@@ -9,28 +10,18 @@ const PHASES = [
 ] as const;
 
 const PHASE_MS = 900;
-const FINISH_MS = 1100;
 
-export function AnalysisLoading({
-  url,
-  onComplete,
-}: {
-  url: string;
-  onComplete: () => void;
-}) {
+export function AnalysisLoading({ url }: { url: string }) {
   const [phaseIndex, setPhaseIndex] = useState(0);
 
   useEffect(() => {
-    if (phaseIndex < PHASES.length - 1) {
-      const timer = setTimeout(
-        () => setPhaseIndex((index) => index + 1),
-        PHASE_MS,
-      );
-      return () => clearTimeout(timer);
-    }
-    const timer = setTimeout(onComplete, FINISH_MS);
+    if (phaseIndex >= PHASES.length - 1) return;
+    const timer = setTimeout(
+      () => setPhaseIndex((index) => index + 1),
+      PHASE_MS,
+    );
     return () => clearTimeout(timer);
-  }, [phaseIndex, onComplete]);
+  }, [phaseIndex]);
 
   return (
     <section
@@ -43,7 +34,7 @@ export function AnalysisLoading({
         aria-hidden="true"
       />
       <p className="mt-8 text-xs font-medium uppercase tracking-widest text-neutral-500">
-        Step {phaseIndex + 1} of {PHASES.length}
+        Step {Math.min(phaseIndex + 1, PHASES.length)} of {PHASES.length}
       </p>
       <p
         aria-live="polite"

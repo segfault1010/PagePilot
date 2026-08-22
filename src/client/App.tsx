@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { API_ERROR_CODES } from "../shared/audit-types";
 import type { ApiError } from "../shared/audit-types";
 import { AnalysisLoading } from "./features/analysis/components/analysis-loading";
 import { BrandMark } from "./features/analysis/components/brand-mark";
 import { ErrorState } from "./features/analysis/components/error-state";
 import { Landing } from "./features/analysis/components/landing";
 import { ReportView } from "./features/analysis/components/report-view";
-import { sampleReport } from "./features/analysis/sample-report";
+import { analyzeUrl } from "./features/analysis/api";
+import { sampleReport } from "../shared/sample-report";
 
 type View =
   | { name: "landing" }
@@ -27,14 +27,6 @@ export default function App() {
     setView({ name: "analyzing", url });
   }, []);
 
-  const handleAnalysisComplete = useCallback(() => {
-    setView((current) =>
-      current.name === "analyzing"
-        ? { name: "report", url: current.url }
-        : current,
-    );
-  }, []);
-
   const handleBackToLanding = useCallback(() => {
     setView({ name: "landing" });
   }, []);
@@ -47,28 +39,27 @@ export default function App() {
     );
   }, []);
 
-  // Static preview affordance for the failure experience. Replaced by real
-  // API error handling in Phase 3.
-  const handlePreviewFailure = useCallback(() => {
-    const url = draftUrl || "https://example.com";
-    setDraftUrl(url);
-    setView({
-      name: "failure",
-      url,
-      error: {
-        code: API_ERROR_CODES.upstreamFailure,
-        message:
-          "Static preview of the failure experience — live analysis arrives in an upcoming update.",
-        retryable: true,
-      },
+  useEffect(() => {
+    if (view.name !== "analyzing") return;
+    let cancelled = false;
+    analyzeUrl(view.url).then((result) => {
+      if (cancelled) return;
+      setView(
+        result.ok
+          ? { name: "report", url: view.url }
+          : { name: "failure", url: view.url, error: result.error },
+      );
     });
-  }, [draftUrl]);
+    return () => {
+      cancelled = true;
+    };
+  }, [view]);
 
   if (view.name === "analyzing") {
     return (
       <div className="min-h-screen">
         <MiniHeader onHome={handleBackToLanding} />
-        <AnalysisLoading url={view.url} onComplete={handleAnalysisComplete} />
+        <AnalysisLoading url={view.url} />
       </div>
     );
   }
@@ -108,13 +99,7 @@ export default function App() {
     );
   }
 
-  return (
-    <Landing
-      initialUrl={draftUrl}
-      onAnalyze={handleAnalyze}
-      onPreviewFailure={handlePreviewFailure}
-    />
-  );
+  return <Landing initialUrl={draftUrl} onAnalyze={handleAnalyze} />;
 }
 
 function MiniHeader({ onHome }: { onHome: () => void }) {

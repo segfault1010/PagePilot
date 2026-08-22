@@ -133,6 +133,7 @@ export const API_ERROR_CODES = {
   badRequest: "BAD_REQUEST",
   invalidUrl: "INVALID_URL",
   blockedDestination: "BLOCKED_DESTINATION",
+  requestTooLarge: "REQUEST_TOO_LARGE",
   pageTooLarge: "PAGE_TOO_LARGE",
   nonHtmlResponse: "NON_HTML_RESPONSE",
   rateLimited: "RATE_LIMITED",

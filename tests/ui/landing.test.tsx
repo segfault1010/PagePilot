@@ -2,26 +2,25 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../../src/client/App";
+import { analyzeUrl } from "../../src/client/features/analysis/api";
+import type { AnalyzeResult } from "../../src/client/features/analysis/api";
+import { sampleReport } from "../../src/shared/sample-report";
+
+vi.mock("../../src/client/features/analysis/api", () => ({
+  analyzeUrl: vi.fn(),
+  NETWORK_ERROR_CODE: "NETWORK_ERROR",
+}));
+
+const mockedAnalyzeUrl = vi.mocked(analyzeUrl);
 
 beforeEach(() => {
-  vi.useFakeTimers();
   window.scrollTo = () => {};
+  mockedAnalyzeUrl.mockReset();
 });
 
 afterEach(() => {
   cleanup();
-  vi.useRealTimers();
 });
-
-// React flushes passive effects at act() end, so each loading-phase timer
-// must be reached in a separate stepped advance.
-function finishAnalysis() {
-  for (const ms of [950, 950, 1300]) {
-    act(() => {
-      vi.advanceTimersByTime(ms);
-    });
-  }
-}
 
 function submitUrl(value: string) {
   fireEvent.change(screen.getByLabelText(/website url/i), {
@@ -30,8 +29,29 @@ function submitUrl(value: string) {
   fireEvent.click(screen.getByRole("button", { name: /analyze website/i }));
 }
 
+async function flushApi() {
+  await act(async () => {
+    await Promise.resolve();
+  });
+}
+
+function successResult(): AnalyzeResult {
+  return { ok: true, report: sampleReport };
+}
+
+function failureResult(): AnalyzeResult {
+  return {
+    ok: false,
+    error: {
+      code: "UPSTREAM_FAILURE",
+      message: "The audit engine could not be reached.",
+      retryable: true,
+    },
+  };
+}
+
 describe("App landing states", () => {
-  it("renders the landing hero and URL form", () => {
+  it("renders the landing hero and URL form without the demo failure hook", () => {
     render(<App />);
 
     expect(
@@ -41,14 +61,14 @@ describe("App landing states", () => {
       }),
     ).toBeTruthy();
     expect(screen.getByLabelText(/website url/i)).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: /analyze website/i }),
-    ).toBeTruthy();
     expect(screen.getByText(/example report/i)).toBeTruthy();
     expect(screen.getByText(/sample data/i)).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: /preview the error state/i }),
+    ).toBeNull();
   });
 
-  it("shows inline validation for malformed URLs", () => {
+  it("shows inline validation for malformed URLs without calling the API", () => {
     render(<App />);
     submitUrl("not a url");
 
@@ -57,27 +77,19 @@ describe("App landing states", () => {
     expect(
       screen.getByLabelText(/website url/i).getAttribute("aria-invalid"),
     ).toBe("true");
+    expect(mockedAnalyzeUrl).not.toHaveBeenCalled();
   });
 
-  it("walks the loading phases into the sample report", () => {
+  it("goes loading → API → report on success", async () => {
+    mockedAnalyzeUrl.mockResolvedValueOnce(successResult());
     render(<App />);
     submitUrl("https://example.com");
 
     expect(screen.getByText(/checking url/i)).toBeTruthy();
 
-    act(() => {
-      vi.advanceTimersByTime(950);
-    });
-    expect(screen.getByText(/reading page structure/i)).toBeTruthy();
+    await flushApi();
 
-    act(() => {
-      vi.advanceTimersByTime(950);
-    });
-    expect(screen.getByText(/preparing ux audit/i)).toBeTruthy();
-
-    act(() => {
-      vi.advanceTimersByTime(1300);
-    });
+    expect(mockedAnalyzeUrl).toHaveBeenCalledWith("https://example.com/");
     expect(screen.getByText(/quick wins/i)).toBeTruthy();
     expect(
       screen.getByRole("img", { name: /overall score 70 out of 100/i }),
@@ -85,10 +97,71 @@ describe("App landing states", () => {
     expect(screen.getByText(/preview report with sample data/i)).toBeTruthy();
   });
 
-  it("returns to the landing page from the report", () => {
+  it("goes loading → API → failure with the URL preserved", async () => {
+    mockedAnalyzeUrl.mockResolvedValueOnce(failureResult());
     render(<App />);
     submitUrl("https://example.com");
-    finishAnalysis();
+
+    await flushApi();
+
+    expect(screen.getByRole("alert").textContent).toMatch(
+      /analysis engine unavailable/i,
+    );
+    expect(screen.getByText(/https:\/\/example\.com/)).toBeTruthy();
+    expect(screen.getByText(/audit engine could not be reached/i)).toBeTruthy();
+  });
+
+  it("maps network failures to connection copy", async () => {
+    mockedAnalyzeUrl.mockResolvedValueOnce({
+      ok: false,
+      error: {
+        code: "NETWORK_ERROR",
+        message: "Couldn't reach the analysis service.",
+        retryable: true,
+      },
+    });
+    render(<App />);
+    submitUrl("https://example.com");
+
+    await flushApi();
+
+    expect(screen.getByRole("alert").textContent).toMatch(
+      /connection problem/i,
+    );
+  });
+
+  it("retries after a failure and reaches the report", async () => {
+    mockedAnalyzeUrl
+      .mockResolvedValueOnce(failureResult())
+      .mockResolvedValueOnce(successResult());
+    render(<App />);
+    submitUrl("https://example.com");
+    await flushApi();
+
+    fireEvent.click(screen.getByRole("button", { name: /try again/i }));
+    expect(screen.getByText(/checking url/i)).toBeTruthy();
+
+    await flushApi();
+    expect(mockedAnalyzeUrl).toHaveBeenCalledTimes(2);
+    expect(screen.getByText(/quick wins/i)).toBeTruthy();
+  });
+
+  it("returns to the landing page via Edit URL with the URL preserved", async () => {
+    mockedAnalyzeUrl.mockResolvedValueOnce(failureResult());
+    render(<App />);
+    submitUrl("https://example.com");
+    await flushApi();
+
+    fireEvent.click(screen.getByRole("button", { name: /edit url/i }));
+    const input = screen.getByLabelText(/website url/i) as HTMLInputElement;
+    expect(input.value).toBe("https://example.com/");
+  });
+
+  it("returns to the landing page from the report", async () => {
+    mockedAnalyzeUrl.mockResolvedValueOnce(successResult());
+    render(<App />);
+    submitUrl("https://example.com");
+    await flushApi();
 
     fireEvent.click(
       screen.getByRole("button", { name: /analyze another website/i }),
@@ -99,30 +172,5 @@ describe("App landing states", () => {
         name: /find what's hurting your landing page/i,
       }),
     ).toBeTruthy();
-  });
-
-  it("shows the failure state with the URL preserved and recovers via retry", () => {
-    render(<App />);
-
-    fireEvent.click(
-      screen.getByRole("button", { name: /preview the error state/i }),
-    );
-
-    expect(screen.getByRole("alert").textContent).toMatch(
-      /analysis engine unavailable/i,
-    );
-    expect(screen.getByText(/https:\/\/example\.com/)).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: /try again/i }));
-    expect(screen.getByText(/checking url/i)).toBeTruthy();
-
-    finishAnalysis();
-    expect(screen.getByText(/quick wins/i)).toBeTruthy();
-
-    fireEvent.click(
-      screen.getByRole("button", { name: /analyze another website/i }),
-    );
-    const input = screen.getByLabelText(/website url/i) as HTMLInputElement;
-    expect(input.value).toBe("https://example.com");
   });
 });
