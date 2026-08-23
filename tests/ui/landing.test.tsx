@@ -94,7 +94,7 @@ describe("App landing states", () => {
     expect(
       screen.getByRole("img", { name: /overall score 70 out of 100/i }),
     ).toBeTruthy();
-    expect(screen.getByText(/preview report with sample data/i)).toBeTruthy();
+    expect(screen.getByText(/preview build.*scores are placeholders/i)).toBeTruthy();
   });
 
   it("goes loading → API → failure with the URL preserved", async () => {

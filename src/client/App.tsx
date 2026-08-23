@@ -71,8 +71,8 @@ export default function App() {
         <main className="mx-auto w-full max-w-5xl px-6 pb-20 pt-4 sm:pt-8">
           <h1 className="sr-only">Analysis report</h1>
           <p className="mb-8 rounded-lg border border-neutral-800 bg-neutral-900 px-4 py-3 text-center text-xs leading-5 text-neutral-400">
-            Preview report with sample data — live analysis arrives in an
-            upcoming update.
+            Preview build — scores are placeholders until AI scoring lands.
+            Observed signals below are measured live from the page.
           </p>
           <div className="fade-rise">
             <ReportView

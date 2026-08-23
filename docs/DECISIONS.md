@@ -70,5 +70,42 @@ Live `vercel dev` verification exposed two divergences from the Supertest enviro
 - **Platform body pre-parsing**: the Vercel Node runtime parses JSON bodies and consumes the request stream before Express runs; its parser rejects malformed JSON with a plain `Error("Invalid JSON")` that lacks body-parser's type marker. The Express app therefore uses the platform-parsed body when present (`normalizePlatformBody`) and falls back to `express.json` for plain Node environments, classifies the platform marker as `400 BAD_REQUEST`, and enforces the 4 KB limit via `Content-Length` when its own parser is skipped. Unexpected errors are logged server-side only (name/message, never stacks) while clients keep receiving the sanitized envelope.
 - **Unmatched API routes**: without help, `/api/*` paths other than `/api/analyze` never reach the function and receive Vercel's platform 404 page. A rewrite (`/api/:path*` → `/api/analyze`) routes them into the Express app so every API response uses the stable error envelope, matching tests across environments.
 
+## D16 — Static HTML only; no JavaScript execution (Phase 4)
+
+The pipeline fetches and parses raw HTML exclusively. Target-site JavaScript is never executed: no headless browsers, no Playwright, no screenshots. Anything JavaScript-rendered is invisible to PagePilot by design, and the UI copy must never claim otherwise.
+
+## D17 — SSRF policy: allowlist IP ranges via ipaddr.js, all-records validation (Phase 4)
+
+Destination addresses must be global unicast space (`ipaddr.js` range `unicast` for both IPv4 and IPv6). Loopback, unspecified, RFC1918, CGNAT, link-local/metadata-service (169.254.169.254), multicast, reserved/benchmark blocks, IPv6 loopback/link-local/unique-local, IPv4-mapped, 6to4, and Teredo are all rejected. DNS returns ALL records; if any single record is unsafe the entire destination is rejected (mixed-record rebinding defense). Hostname strings are never trusted — only resolved IPs.
+
+## D18 — Pinned connections with preserved Host/SNI (Phase 4)
+
+`node:http(s).request` is used with a custom `lookup` that hands Node exactly one pre-validated address; the hostname stays intact for the Host header and TLS SNI, so the socket can only connect to an address that just passed validation — closing the validate-then-connect rebinding window. Runtime notes from live verification: Node ≥ 20 runs autoSelectFamily (happy eyeballs) and calls `lookup` with `all = true`, expecting an array of records; the pin honors both callback shapes but always yields only the validated address. Because a single pinned address disables happy-eyeballs racing, a slow network path can consume the whole eight-second budget where a dual-stack race might have connected faster — an accepted security-for-latency trade-off. Defense-in-depth: validation also happens before `openStream` is invoked, independent of the lookup hook.
+
+## D19 — Redirects are manual and fully revalidated (Phase 4)
+
+Automatic redirects are disabled. Up to three hops follow only after each destination passes URL policy, fresh DNS resolution, and IP-range checks. Redirect targets are never echoed to clients on failure.
+
+## D20 — Fetch limits: 1.5 MB / 8 s / 3 redirects (Phase 4)
+
+Decoded HTML is capped at 1.5 MB (counted while streaming, post-decompression; early rejection when Content-Length already exceeds the cap), total wall-clock deadline of eight seconds across redirects and body, maximum three redirect hops. Oversize → 413 PAGE_TOO_LARGE; deadline abort → retryable 504 TIMEOUT; non-2xx/unreachable targets → retryable 502 UPSTREAM_FAILURE. gzip/deflate/brotli responses are decompressed before size accounting.
+
+## D21 — Content-type gate before download (Phase 4)
+
+Only `text/html` and `application/xhtml+xml` (both safely parseable by Cheerio) are accepted; anything else — including missing content-type — is rejected with 422 NON_HTML_RESPONSE before the body is read.
+
+## D22 — PageSnapshot design (Phase 4)
+
+`buildPageSnapshot` (Cheerio) produces a bounded, deterministic object: metadata (title, description, canonical, viewport, capped Open Graph fields, lang), heading outline (≤30 entries) with warnings, whitespace-normalized visible text excerpt capped at 12,000 characters, limited samples (links ≤20, buttons ≤15, forms ≤10, nav ≤10, CTAs ≤12), image counts with alt-attribute coverage, and region counts. Raw HTML never leaves this module and never reaches any AI layer or the client. CTA detection is deliberately conservative evidence (buttons, submit inputs, action-phrase anchors), never a claim about visual prominence.
+
+## D23 — Deterministic signals as the shared contract type (Phase 4)
+
+`runDeterministicChecks` emits `DetectedSignal[]` straight from `src/shared/audit-types`, giving stable IDs (`title.present`, `headings.order`, …), categories matching the seven audit categories, bounded weights, plain-language evidence, and `unknown` status whenever HTML cannot establish an answer (unknowns never penalize). Phase 5 will compute per-category deterministic baselines from these weights and blend them with Gemini scores (0.60/0.40 when coverage ≥ 40%).
+
+## D24 — Phase 4 API boundary (Phase 4)
+
+On success the endpoint still returns the contract-shaped placeholder report (scores remain sample data until Phase 5) but now carries the page's REAL deterministic signals in `observedSignals`, and failures surface real classified statuses (403/413/422/502/504). The client banner states that scores are placeholders while observed signals are measured live. The pipeline is injected into `createApp({ analyzeUrl })` so tests stub it without network access.
+
+
 
 

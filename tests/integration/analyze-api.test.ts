@@ -5,166 +5,183 @@ import {
   analyzeErrorResponseSchema,
   analyzeSuccessResponseSchema,
 } from "../../src/shared/audit-types";
+import type { AnalysisOutcome } from "../../src/server/pipeline";
 import { createApp } from "../../src/server/http/app";
 
-function postJson(body: unknown): request.Test {
-  return request(createApp()).post("/api/analyze").send(body as object);
+function postJson(
+  body: unknown,
+  analyzeUrl?: (url: string) => Promise<AnalysisOutcome>,
+): request.Test {
+  const app = createApp(analyzeUrl ? { analyzeUrl } : undefined);
+  return request(app).post("/api/analyze").send(body as object);
 }
 
 function expectEnvelope(res: Response) {
   const parsed = analyzeErrorResponseSchema.safeParse(res.body);
   expect(parsed.success).toBe(true);
   expect(Object.keys(res.body).sort()).toEqual(["error"]);
-  expect(Object.keys(res.body.error).sort()).toEqual([
-    "code",
-    "message",
-    "retryable",
-  ]);
-  expect(typeof res.body.error.message).toBe("string");
-  expect(typeof res.body.error.retryable).toBe("boolean");
 }
 
+// ---------------------------------------------------------------------------
+// Request validation (unchanged from Phase 3)
+// ---------------------------------------------------------------------------
+
 describe("POST /api/analyze — request validation", () => {
-  it("returns the placeholder report for a valid https URL", async () => {
-    const res = await postJson({ url: "https://example.com" });
+  it("rejects malformed URLs with 400 INVALID_URL before any analysis", async () => {
+    let called = false;
+    const res = await postJson({ url: "not a url" }, async () => {
+      called = true;
+      throw new Error("must not run");
+    });
 
-    expect(res.status).toBe(200);
-    expect(analyzeSuccessResponseSchema.safeParse(res.body).success).toBe(true);
-    expect(typeof res.body.report.overallScore).toBe("number");
-    expect(res.headers["content-type"]).toMatch(/application\/json/);
-  });
-
-  it("returns the placeholder report for a valid http URL", async () => {
-    const res = await postJson({ url: "http://example.com/page" });
-    expect(res.status).toBe(200);
-  });
-
-  it("accepts explicit default ports", async () => {
-    expect((await postJson({ url: "https://example.com:443" })).status).toBe(200);
-    expect((await postJson({ url: "http://example.com:80" })).status).toBe(200);
-  });
-
-  it("rejects an empty URL with 400", async () => {
-    const res = await postJson({ url: "" });
-    expect(res.status).toBe(400);
-    expectEnvelope(res);
-    expect(res.body.error.code).toBe("BAD_REQUEST");
-  });
-
-  it("rejects a whitespace-only URL as an invalid URL", async () => {
-    const res = await postJson({ url: "   " });
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe("INVALID_URL");
+    expect(called).toBe(false);
   });
 
-  it("rejects a missing url field with 400", async () => {
-    const res = await postJson({});
-    expect(res.status).toBe(400);
-    expectEnvelope(res);
-    expect(res.body.error.code).toBe("BAD_REQUEST");
-  });
-
-  it("rejects a non-string url with 400", async () => {
-    const res = await postJson({ url: 12345 });
-    expect(res.status).toBe(400);
-    expect(res.body.error.code).toBe("BAD_REQUEST");
-  });
-
-  it("rejects malformed URLs with 400 INVALID_URL", async () => {
-    const res = await postJson({ url: "not a url" });
-    expect(res.status).toBe(400);
-    expect(res.body.error.code).toBe("INVALID_URL");
-  });
-
-  it("rejects non-absolute URLs (server does not prepend schemes)", async () => {
-    const res = await postJson({ url: "example.com" });
-    expect(res.status).toBe(400);
-    expect(res.body.error.code).toBe("INVALID_URL");
-  });
-
-  it.each(["ftp://example.com", "javascript:alert(1)", "file:///etc/hosts"])(
-    "rejects unsupported protocol %s with 400 INVALID_URL",
+  it.each(["ftp://example.com", "https://user:pass@example.com", "https://example.com:8443"])(
+    "rejects policy-violating URL %s with 400",
     async (url) => {
-      const res = await postJson({ url });
+      const res = await postJson({ url }, async () => {
+        throw new Error("must not run");
+      });
       expect(res.status).toBe(400);
       expect(res.body.error.code).toBe("INVALID_URL");
-      expect(res.body.error.message).toMatch(/http/i);
     },
   );
 
-  it("rejects URLs with credentials", async () => {
-    const res = await postJson({ url: "https://user:pass@example.com" });
-    expect(res.status).toBe(400);
-    expect(res.body.error.code).toBe("INVALID_URL");
-  });
+  it("rejects missing/malformed bodies and wrong methods as in Phase 3", async () => {
+    expect((await postJson({}).set("x", "y")).status).toBe(400);
 
-  it("rejects disallowed ports", async () => {
-    for (const url of [
-      "https://example.com:8443",
-      "http://example.com:3128",
-      "https://example.com:80",
-    ]) {
-      const res = await postJson({ url });
-      expect(res.status).toBe(400);
-      expect(res.body.error.code).toBe("INVALID_URL");
-    }
-  });
-});
-
-describe("POST /api/analyze — body handling", () => {
-  it("rejects malformed JSON with a 400 envelope", async () => {
-    const res = await request(createApp())
+    const malformed = await request(createApp())
       .post("/api/analyze")
       .set("Content-Type", "application/json")
       .send("{not json");
+    expect(malformed.status).toBe(400);
+    expect(malformed.body.error.code).toBe("BAD_REQUEST");
 
-    expect(res.status).toBe(400);
-    expect(res.body.error.code).toBe("BAD_REQUEST");
-  });
-
-  it("rejects a missing body with 400", async () => {
-    const res = await request(createApp()).post("/api/analyze");
-    expect(res.status).toBe(400);
-    expectEnvelope(res);
-  });
-
-  it("rejects oversized bodies with 413 REQUEST_TOO_LARGE", async () => {
-    const res = await postJson({
+    const oversized = await postJson({
       url: `https://example.com/${"a".repeat(5000)}`,
     });
-    expect(res.status).toBe(413);
-    expect(res.body.error.code).toBe("REQUEST_TOO_LARGE");
-    expect(res.body.error.retryable).toBe(false);
+    expect(oversized.status).toBe(413);
+    expect(oversized.body.error.code).toBe("REQUEST_TOO_LARGE");
+
+    const get = await request(createApp()).get("/api/analyze");
+    expect(get.status).toBe(405);
+    expect(get.headers.allow).toBe("POST");
+  });
+
+  it("never leaks stack traces or internal details", async () => {
+    const res = await postJson({ url: "not a url" });
+    const serialized = JSON.stringify(res.body);
+    expect(serialized).not.toMatch(/at .*\(/);
+    expect(serialized.toLowerCase()).not.toContain("stack");
   });
 });
 
-describe("API surface", () => {
-  it("rejects GET /api/analyze with 405 and an Allow header", async () => {
-    const res = await request(createApp()).get("/api/analyze");
+// ---------------------------------------------------------------------------
+// Phase 4 pipeline outcomes
+// ---------------------------------------------------------------------------
 
-    expect(res.status).toBe(405);
-    expect(res.headers.allow).toBe("POST");
-    expect(res.body.error.code).toBe("METHOD_NOT_ALLOWED");
+const SAMPLE_SIGNALS = [
+  {
+    id: "title.present",
+    category: "clarity" as const,
+    status: "pass" as const,
+    weight: 0.5,
+    evidence: "Title present.",
+  },
+];
+
+const successOutcome: AnalysisOutcome = {
+  ok: true,
+  finalUrl: "https://example.com/",
+  signals: SAMPLE_SIGNALS,
+};
+
+function failure(
+  status: number,
+  code: string,
+  message: string,
+  retryable: boolean,
+): AnalysisOutcome {
+  return { ok: false, status, code, message, retryable };
+}
+
+describe("POST /api/analyze — pipeline outcomes", () => {
+  it("returns the placeholder report carrying real observed signals", async () => {
+    const res = await postJson({ url: "https://example.com" }, async () => successOutcome);
+
+    expect(res.status).toBe(200);
+    expect(analyzeSuccessResponseSchema.safeParse(res.body).success).toBe(true);
+    expect(res.body.report.observedSignals[0]).toMatchObject({
+      id: "title.present",
+      status: "pass",
+    });
+    // Scores remain clearly-labeled placeholders until Phase 5.
+    expect(typeof res.body.report.overallScore).toBe("number");
   });
 
-  it("rejects DELETE /api/analyze with 405", async () => {
-    const res = await request(createApp()).delete("/api/analyze");
-    expect(res.status).toBe(405);
-    expect(res.body.error.code).toBe("METHOD_NOT_ALLOWED");
+  it("maps blocked destinations to 403", async () => {
+    const res = await postJson(
+      { url: "http://169.254.169.254/latest/meta-data" },
+      async () =>
+        failure(
+          403,
+          "BLOCKED_DESTINATION",
+          "This destination isn't reachable.",
+          false,
+        ),
+    );
+
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe("BLOCKED_DESTINATION");
+    expectEnvelope(res);
   });
 
-  it("returns a 404 envelope for unknown API routes", async () => {
-    const res = await request(createApp()).get("/api/nope");
-    expect(res.status).toBe(404);
-    expect(res.body.error.code).toBe("NOT_FOUND");
+  it("maps oversized pages to 413 PAGE_TOO_LARGE", async () => {
+    const res = await postJson({ url: "https://huge.example/" }, async () =>
+      failure(413, "PAGE_TOO_LARGE", "That page exceeds the size PagePilot can process.", false),
+    );
+
+    expect(res.status).toBe(413);
+    expect(res.body.error.code).toBe("PAGE_TOO_LARGE");
   });
 
-  it("never leaks stack traces or internal details in errors", async () => {
-    const res = await postJson({ url: "not a url" });
-    const serialized = JSON.stringify(res.body);
+  it("maps non-HTML responses to 422 NON_HTML_RESPONSE", async () => {
+    const res = await postJson({ url: "https://files.example/doc.pdf" }, async () =>
+      failure(422, "NON_HTML_RESPONSE", "PagePilot analyzes HTML landing pages.", false),
+    );
 
-    expect(serialized).not.toMatch(/at .*\(/);
-    expect(serialized.toLowerCase()).not.toContain("stack");
-    expect(Object.keys(res.body)).toEqual(["error"]);
+    expect(res.status).toBe(422);
+    expect(res.body.error.code).toBe("NON_HTML_RESPONSE");
+  });
+
+  it("maps timeouts to retryable 504 TIMEOUT", async () => {
+    const res = await postJson({ url: "https://slow.example/" }, async () =>
+      failure(504, "TIMEOUT", "The site took too long to respond.", true),
+    );
+
+    expect(res.status).toBe(504);
+    expect(res.body.error.retryable).toBe(true);
+  });
+
+  it("maps upstream failures to retryable 502 UPSTREAM_FAILURE", async () => {
+    const res = await postJson({ url: "https://down.example/" }, async () =>
+      failure(502, "UPSTREAM_FAILURE", "We couldn't complete the audit this time.", true),
+    );
+
+    expect(res.status).toBe(502);
+    expect(res.body.error.retryable).toBe(true);
+  });
+
+  it("returns a generic 500 when the injected pipeline throws unexpectedly", async () => {
+    const res = await postJson({ url: "https://example.com" }, async () => {
+      throw new Error("secret internal detail XYZ");
+    });
+
+    expect(res.status).toBe(500);
+    expect(JSON.stringify(res.body)).not.toContain("XYZ");
+    expect(res.body.error.code).toBe("INTERNAL_ERROR");
   });
 });

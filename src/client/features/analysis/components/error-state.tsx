@@ -28,6 +28,11 @@ const COPY: Record<string, { title: string; description: string }> = {
     description:
       "PagePilot analyzes HTML landing pages. PDFs, images, and other file types aren't supported.",
   },
+  [API_ERROR_CODES.requestTooLarge]: {
+    title: "Request too large",
+    description:
+      "The analysis request exceeded its size limit. Please try again.",
+  },
   [API_ERROR_CODES.rateLimited]: {
     title: "Too many requests",
     description:

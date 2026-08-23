@@ -4,10 +4,17 @@ import { API_ERROR_CODES } from "../../shared/audit-types";
 import { sampleReport } from "../../shared/sample-report";
 import { enforceUrlPolicy } from "../../shared/url-policy";
 import { analyzeRequestSchema } from "../../shared/audit-types";
+import type { AnalysisOutcome } from "../pipeline";
+import { analyzeTarget } from "../pipeline";
 
 // Matches the planned 4 KB JSON request limit.
 const MAX_JSON_BODY_BYTES = "4kb";
 const MAX_JSON_BODY_LIMIT_BYTES = 4096;
+
+export interface AppOptions {
+  /** Injectable for tests; production uses the real safe-fetch pipeline. */
+  analyzeUrl?: (url: string) => Promise<AnalysisOutcome>;
+}
 
 export function sendApiError(
   res: Response,
@@ -36,16 +43,6 @@ function normalizePlatformBody(req: Request): void {
     }
     return;
   }
-  if (typeof req.body !== "object") {
-    // Primitive JSON body (string/number): keep as-is for schema rejection.
-    return;
-  }
-}
-
-interface BodyParserFailure {
-  status: number;
-  code: string;
-  message: string;
 }
 
 function classifyBodyParserError(error: unknown): BodyParserFailure | undefined {
@@ -77,7 +74,14 @@ function classifyBodyParserError(error: unknown): BodyParserFailure | undefined 
   return undefined;
 }
 
-export function createApp(): Express {
+interface BodyParserFailure {
+  status: number;
+  code: string;
+  message: string;
+}
+
+export function createApp(options: AppOptions = {}): Express {
+  const analyzeUrl = options.analyzeUrl ?? analyzeTarget;
   const app = express();
 
   app.disable("x-powered-by");
@@ -90,7 +94,10 @@ export function createApp(): Express {
   // skipped (its own limit is much larger than ours).
   app.use((req, res, next) => {
     const declaredLength = Number(req.headers["content-length"] ?? "0");
-    if (Number.isFinite(declaredLength) && declaredLength > MAX_JSON_BODY_LIMIT_BYTES) {
+    if (
+      Number.isFinite(declaredLength) &&
+      declaredLength > MAX_JSON_BODY_LIMIT_BYTES
+    ) {
       sendApiError(
         res,
         413,
@@ -126,16 +133,60 @@ export function createApp(): Express {
     }
 
     // Authoritative server-side validation; the client's checks are only
-    // fast feedback and are never trusted. No network activity happens here.
+    // fast feedback and are never trusted.
     const policy = enforceUrlPolicy(requestParse.data.url);
     if (!policy.ok) {
       sendApiError(res, 400, policy.code, policy.message, false);
       return;
     }
 
-    // Placeholder success until the pipeline lands (Phases 4-5): the report
-    // is static sample data, labeled as such by the client.
-    res.status(200).json({ report: structuredClone(sampleReport) });
+    void (async () => {
+      let outcome: AnalysisOutcome;
+      try {
+        outcome = await analyzeUrl(policy.url);
+      } catch (error) {
+        console.error(
+          "[api/analyze] unexpected error:",
+          error instanceof Error ? `${error.name}: ${error.message}` : typeof error,
+        );
+        sendApiError(
+          res,
+          500,
+          "INTERNAL_ERROR",
+          "Unexpected server error.",
+          false,
+        );
+        return;
+      }
+
+      if (!outcome.ok) {
+        sendApiError(
+          res,
+          outcome.status,
+          outcome.code,
+          outcome.message,
+          outcome.retryable,
+        );
+        return;
+      }
+
+      // Phase 4 boundary: scores remain sample placeholders until Gemini
+      // scoring lands in Phase 5. Observed signals are real measurements
+      // from the fetched page.
+      const report = structuredClone(sampleReport);
+      report.observedSignals = outcome.signals;
+      res.status(200).json({ report });
+    })().catch(() => {
+      if (!res.headersSent) {
+        sendApiError(
+          res,
+          500,
+          "INTERNAL_ERROR",
+          "Unexpected server error.",
+          false,
+        );
+      }
+    });
   });
 
   app.use("/api/analyze", (req, res) => {
