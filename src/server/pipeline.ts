@@ -1,13 +1,16 @@
 import { createSafeFetcher, SafeFetchError } from "./fetch/safe-fetch";
 import { buildPageSnapshot } from "./extract/page-snapshot";
 import { runDeterministicChecks } from "./extract/deterministic-checks";
+import { createGeminiAuditor, AiError, DEFAULT_GEMINI_MODEL } from "./ai/gemini-auditor";
+import type { UxAuditProvider } from "./ai/gemini-auditor";
+import { buildAuditModelInput } from "./ai/audit-input";
+import { checkSignalReferences, geminiAuditSchema } from "./schemas/audit";
+import { buildReport } from "./scoring/score-report";
 import { API_ERROR_CODES } from "../shared/audit-types";
-import type { DetectedSignal } from "../shared/audit-types";
+import type { Report } from "../shared/audit-types";
 
 export interface AnalysisSuccess {
-  finalUrl: string;
-  /** Real deterministic evidence for the page, keyed by stable signal IDs. */
-  signals: DetectedSignal[];
+  report: Report;
 }
 
 export interface AnalysisFailure {
@@ -21,11 +24,33 @@ export type AnalysisOutcome =
   | ({ ok: true } & AnalysisSuccess)
   | ({ ok: false } & AnalysisFailure);
 
+export interface PipelineDeps {
+  /** Injectable for tests; production builds the real Gemini adapter. */
+  auditor?: UxAuditProvider;
+}
+
+const GENERIC_AI_FAILURE = {
+  status: 502,
+  code: API_ERROR_CODES.upstreamFailure,
+  message:
+    "We couldn't complete the audit this time. Please try again shortly.",
+  retryable: true,
+} as const;
+
 /**
- * Phase 4 pipeline: safe fetch → snapshot → deterministic checks. No AI
- * scoring happens here; Phase 5 will merge these signals with Gemini output.
+ * Full Phase 5 pipeline: safe fetch → snapshot → deterministic signals →
+ * Gemini structured audit (validated) → signal-reference check → server-side
+ * scoring → contract-valid report.
+ *
+ * Fetch failures keep their Phase 4 mappings; every AI failure collapses to
+ * one of four safe envelopes (503 missing config, 502 provider/schema
+ * failure, 504 timeout). Raw prompts, model output, and provider details
+ * never cross this boundary.
  */
-export async function analyzeTarget(rawUrl: string): Promise<AnalysisOutcome> {
+export async function analyzeTarget(
+  rawUrl: string,
+  deps: PipelineDeps = {},
+): Promise<AnalysisOutcome> {
   const fetchPage = createSafeFetcher();
 
   let page;
@@ -36,13 +61,11 @@ export async function analyzeTarget(rawUrl: string): Promise<AnalysisOutcome> {
     return { ok: false, ...mapFetchFailure(error) };
   }
 
+  let snapshot;
+  let signals;
   try {
-    const snapshot = buildPageSnapshot(page.body, page.finalUrl);
-    return {
-      ok: true,
-      finalUrl: page.finalUrl,
-      signals: runDeterministicChecks(snapshot),
-    };
+    snapshot = buildPageSnapshot(page.body, page.finalUrl);
+    signals = runDeterministicChecks(snapshot);
   } catch {
     // Malformed HTML that Cheerio cannot make sense of still yields a
     // snapshot in practice; any unexpected parser failure is classified,
@@ -54,6 +77,74 @@ export async function analyzeTarget(rawUrl: string): Promise<AnalysisOutcome> {
       message: "The page could not be processed.",
       retryable: false,
     };
+  }
+
+  const auditor = deps.auditor ?? defaultAuditor();
+  let audit;
+  try {
+    audit = await auditor.runAudit(buildAuditModelInput(snapshot, rawUrl, signals));
+  } catch (error) {
+    if (!(error instanceof AiError)) throw error;
+    return { ok: false, ...mapAiFailure(error) };
+  }
+
+  // Defense-in-depth: re-validate at the pipeline boundary so no provider
+  // (including test doubles) can smuggle malformed data into scoring.
+  const validated = geminiAuditSchema.safeParse(audit);
+  if (!validated.success) {
+    console.error("[ai] audit failed schema validation before scoring");
+    return { ok: false, ...GENERIC_AI_FAILURE };
+  }
+  audit = validated.data;
+
+  // The model may only reference deterministic signals that exist for THIS
+  // page; anything else is an invented evidence reference.
+  const references = checkSignalReferences(audit, new Set(signals.map((s) => s.id)));
+  if (!references.ok) {
+    console.error(
+      `[ai] audit referenced unknown signal ids (${references.invalidIds.length})`,
+    );
+    return { ok: false, ...GENERIC_AI_FAILURE };
+  }
+
+  return {
+    ok: true,
+    report: buildReport({
+      requestedUrl: rawUrl,
+      finalUrl: page.finalUrl,
+      title: snapshot.title,
+      analyzedAt: new Date(),
+      signals,
+      audit,
+    }),
+  };
+}
+
+function defaultAuditor(): UxAuditProvider {
+  return createGeminiAuditor({ model: process.env.GEMINI_MODEL ?? DEFAULT_GEMINI_MODEL });
+}
+
+function mapAiFailure(error: AiError): AnalysisFailure {
+  switch (error.kind) {
+    case "configuration":
+      return {
+        status: 503,
+        code: API_ERROR_CODES.missingConfiguration,
+        message:
+          "The service is missing configuration. This isn't something you can fix — please try again later.",
+        retryable: false,
+      };
+    case "timeout":
+      return {
+        status: 504,
+        code: API_ERROR_CODES.timeout,
+        message:
+          "The analysis took too long to complete. Give it another try.",
+        retryable: true,
+      };
+    case "unavailable":
+    case "invalid-response":
+      return { ...GENERIC_AI_FAILURE };
   }
 }
 

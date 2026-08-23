@@ -56,9 +56,9 @@ function makeRecommendation(title: string): Recommendation {
 }
 
 /**
- * Contract-valid placeholder report served by the API and rendered by the
- * client until the real pipeline (Phases 4-5) produces live reports. The UI
- * labels it as sample data; it never claims to analyze the entered URL.
+ * Contract-valid sample report rendered by the landing page's labeled
+ * "Example report" preview and reused by contract/UI tests. The API no
+ * longer serves this — Phase 5 replaced it with real server-scored reports.
  */
 export const sampleReport: Report = {
   source: {

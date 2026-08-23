@@ -1,7 +1,6 @@
 import express from "express";
 import type { Express, NextFunction, Request, Response } from "express";
 import { API_ERROR_CODES } from "../../shared/audit-types";
-import { sampleReport } from "../../shared/sample-report";
 import { enforceUrlPolicy } from "../../shared/url-policy";
 import { analyzeRequestSchema } from "../../shared/audit-types";
 import type { AnalysisOutcome } from "../pipeline";
@@ -170,12 +169,8 @@ export function createApp(options: AppOptions = {}): Express {
         return;
       }
 
-      // Phase 4 boundary: scores remain sample placeholders until Gemini
-      // scoring lands in Phase 5. Observed signals are real measurements
-      // from the fetched page.
-      const report = structuredClone(sampleReport);
-      report.observedSignals = outcome.signals;
-      res.status(200).json({ report });
+      // The pipeline returns a fully validated, server-scored report.
+      res.status(200).json({ report: outcome.report });
     })().catch(() => {
       if (!res.headersSent) {
         sendApiError(

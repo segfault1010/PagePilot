@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../../src/client/App";
 import { analyzeUrl } from "../../src/client/features/analysis/api";
 import type { AnalyzeResult } from "../../src/client/features/analysis/api";
-import { sampleReport } from "../../src/shared/sample-report";
+import { sampleReport as report } from "../../src/shared/sample-report";
 
 vi.mock("../../src/client/features/analysis/api", () => ({
   analyzeUrl: vi.fn(),
@@ -36,7 +36,7 @@ async function flushApi() {
 }
 
 function successResult(): AnalyzeResult {
-  return { ok: true, report: sampleReport };
+  return { ok: true, report };
 }
 
 function failureResult(): AnalyzeResult {
@@ -94,7 +94,9 @@ describe("App landing states", () => {
     expect(
       screen.getByRole("img", { name: /overall score 70 out of 100/i }),
     ).toBeTruthy();
-    expect(screen.getByText(/preview build.*scores are placeholders/i)).toBeTruthy();
+    // Phase 5: the real report renders; the placeholder disclosure is gone.
+    expect(screen.queryByText(/preview build/i)).toBeNull();
+    expect(screen.getByText(report.summary)).toBeTruthy();
   });
 
   it("goes loading → API → failure with the URL preserved", async () => {

@@ -1,17 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
-import type { ApiError } from "../shared/audit-types";
+import type { ApiError, Report } from "../shared/audit-types";
 import { AnalysisLoading } from "./features/analysis/components/analysis-loading";
 import { BrandMark } from "./features/analysis/components/brand-mark";
 import { ErrorState } from "./features/analysis/components/error-state";
 import { Landing } from "./features/analysis/components/landing";
 import { ReportView } from "./features/analysis/components/report-view";
 import { analyzeUrl } from "./features/analysis/api";
-import { sampleReport } from "../shared/sample-report";
 
 type View =
   | { name: "landing" }
   | { name: "analyzing"; url: string }
-  | { name: "report"; url: string }
+  | { name: "report"; url: string; report: Report }
   | { name: "failure"; url: string; error: ApiError };
 
 export default function App() {
@@ -46,7 +45,7 @@ export default function App() {
       if (cancelled) return;
       setView(
         result.ok
-          ? { name: "report", url: view.url }
+          ? { name: "report", url: view.url, report: result.report }
           : { name: "failure", url: view.url, error: result.error },
       );
     });
@@ -70,13 +69,9 @@ export default function App() {
         <MiniHeader onHome={handleBackToLanding} />
         <main className="mx-auto w-full max-w-5xl px-6 pb-20 pt-4 sm:pt-8">
           <h1 className="sr-only">Analysis report</h1>
-          <p className="mb-8 rounded-lg border border-neutral-800 bg-neutral-900 px-4 py-3 text-center text-xs leading-5 text-neutral-400">
-            Preview build — scores are placeholders until AI scoring lands.
-            Observed signals below are measured live from the page.
-          </p>
           <div className="fade-rise">
             <ReportView
-              report={sampleReport}
+              report={view.report}
               onAnalyzeAnother={handleBackToLanding}
             />
           </div>

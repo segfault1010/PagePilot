@@ -106,6 +106,61 @@ Only `text/html` and `application/xhtml+xml` (both safely parseable by Cheerio) 
 
 On success the endpoint still returns the contract-shaped placeholder report (scores remain sample data until Phase 5) but now carries the page's REAL deterministic signals in `observedSignals`, and failures surface real classified statuses (403/413/422/502/504). The client banner states that scores are placeholders while observed signals are measured live. The pipeline is injected into `createApp({ analyzeUrl })` so tests stub it without network access.
 
+## D25 — Gemini adapter isolation; plain fetch, no SDK (Phase 5)
+
+All provider-specific logic — endpoint URL, prompts, generation config, timeout, response parsing — lives in `src/server/ai/gemini-auditor.ts` behind a one-method `UxAuditProvider` interface. The REST `generateContent` endpoint is called with the platform `fetch` instead of adding an SDK dependency: the adapter is small, mocking is trivial, and no transitive dependency risk is introduced. `GEMINI_API_KEY`/`GEMINI_MODEL` are read only inside this module at request time (lazy, so serverless env injection order cannot matter); neither value nor any model input/output crosses the module boundary except the validated result.
+
+## D26 — Structured output via responseJsonSchema derived from Zod (Phase 5)
+
+Gemini is constrained at generation time with `responseMimeType: application/json` plus `responseJsonSchema`, generated from the Zod wire schema (`z.toJSONSchema`, with keywords Gemini rejects or ignores stripped). The Zod schemas remain the authority: generation constraints guide the model, validation rejects it. Generation limits (`maxOutputTokens: 8192`, `temperature: 0.2`, 22 s client-side deadline) keep responses bounded within the 30 s function budget. No throughput retry — one bounded compatibility fallback exists only when a model generation rejects the thinking settings (HTTP 400), retried once without them.
+
+## D26a — Live-verified Gemini API constraints shape the wire contract (Phase 5)
+
+Live probing against `generativelanguage.googleapis.com/v1beta` surfaced undocumented restrictions that the adapter accommodates; each was confirmed by controlled request bisection:
+
+- **Arrays of objects may not nest inside arrays of objects.** A generation schema with `categories[].findings[]` is rejected as 400 INVALID_ARGUMENT while every section in isolation passes. Findings are therefore generated as ONE flat top-level list tagged with `categoryKey`; `parseGeminiAuditOutput` groups them back under categories before the strict domain re-validation. Consumers only ever see the grouped domain type.
+- **Large `maxItems` on object arrays is rejected** (maxItems 6 failed where maxItems 3 passed). All `minItems`/`maxItems` are stripped from the generation schema; exact cardinalities (7 categories, exactly 3 top problems, ≤3 findings/category, 3–5 quick wins) are stated in the prompt and enforced authoritatively by Zod after parsing.
+- **`systemInstruction` combined with structured output is rejected.** The identical rule text in the user turn is accepted, so prompt rules travel in the user message.
+- **String-length keywords are unsupported** by the response JSON Schema subset and are stripped; bounds enforced post-parse.
+
+Default model is `gemini-3.6-flash` (`gemini-2.5-flash` returns 404 "no longer available to new users"). Gemini 3.x models run with `thinkingConfig.thinkingLevel: "low"` — default thinking regularly exceeded the latency budget under free-tier load — with the single no-thinking fallback from D26 covering any model that rejects the field.
+
+## D27 — Model input is a bounded evidence pack, never HTML (Phase 5)
+
+`src/server/ai/audit-input.ts` builds a compact JSON object from PageSnapshot + deterministic signals (metadata, heading outline, ≤4000-char visible-text excerpt, capped link/button/form/nav/CTA samples, image alt statistics, viewport/lang/canonical/OG facts, signals with evidence). Every variable-length field is truncated before serialization, with a hard serialized-size cap as a final gate. Raw HTML, cookies, request headers, DNS/IP details, and upstream response data are structurally absent from this type — they exist nowhere between the fetch layer and the adapter.
+
+## D28 — Strict Zod gate on all model output (Phase 5)
+
+`src/server/schemas/audit.ts` defines the strict Gemini audit schema: exactly seven unique category keys, integer scores 0–100, closed severity/basis/category enums, bounded string lengths, max three findings per category, exactly three top problems, 3–5 quick wins, 1–10 detailed recommendations, strict-object rejection of unknown keys. No best-effort repair: any violation rejects the whole response and maps to the generic retryable `502 UPSTREAM_FAILURE` envelope. The pipeline re-validates the audit defensively even when the provider already validated, so nothing malformed can reach scoring from any source.
+
+## D29 — Signal references validated against the analyzed page's signal set (Phase 5)
+
+Every `signalIds` entry referenced by findings/top problems must exist in the deterministic signal set produced for THIS analysis. Unknown or foreign IDs reject the whole audit (safe generic failure, logged server-side by count only). This preserves the observed/inferred distinction: "observed" claims must be anchored in real measured evidence, while "inferred" marks professional interpretation.
+
+## D30 — Deterministic baselines, 60/40 blending, ai-led fallback (Phase 5)
+
+Per category: applicable (pass/warn) weighted signals produce a baseline (pass = full credit, warn = 0.5 partial credit; unknowns excluded from both points and denominator, so they never penalize). When applicable weight covers ≥ 40% of the category's emitted signal weight, `categoryScore = round(0.60 × Gemini + 0.40 × baseline)` and confidence is "blended"; otherwise the Gemini score stands alone ("ai-led"). Report-level confidence is conservative: blended only when every category blended. All scoring lives in `src/server/scoring/score-report.ts` and is fully deterministic.
+
+## D31 — overallScore computed server-side only (Phase 5)
+
+The overall score is the PLAN-defined weighted sum of FINAL post-blend category scores (clarity .18, visualHierarchy .15, ctaEffectiveness .15, copy .12, accessibility .15, mobileUx .10, trustCredibility .15), rounded and clamped to 0–100 as a defensive invariant. The Gemini schema contains no overall-score field, so the model structurally cannot control it. `buildReport` transforms audit + signals + snapshot into the existing API report contract field-by-field and re-validates against `reportSchema` before returning.
+
+## D32 — AI failure taxonomy maps to four safe envelopes (Phase 5)
+
+Missing/rejected key → non-retryable `503 MISSING_CONFIGURATION`; provider/network unavailability and blocked completions → retryable `502 UPSTREAM_FAILURE`; deadline exceeded → retryable `504 TIMEOUT`; malformed/schema-invalid output or invalid signal references → retryable `502 UPSTREAM_FAILURE`. No new error codes were needed, so the frontend error-copy mapping stays untouched. Server logs carry classification data only (failure kind, HTTP status, zod issue path) — never prompts, raw responses, stack traces, or credentials.
+
+## D33 — Mocked-first verification strategy (Phase 5)
+
+The automated suite never touches live Gemini: tests inject fake `UxAuditProvider`s into the pipeline and mock the adapter's `fetchFn` for HTTP-level behavior; safe-fetch is module-mocked for end-to-end pipeline integration. One manual live verification via `vercel dev` with real credentials confirms the configured model, structured-output compatibility, and secret hygiene; its steps are recorded here but its credentials never leave the local `.env`.
+
+## D34 — Phase 5 live verification record (Phase 5)
+
+Performed against the real Gemini API with `GEMINI_API_KEY` from local `.env`, model `gemini-3.6-flash`:
+
+- **Real adapter success:** two complete audits returned by the unmodified `createGeminiAuditor` module — structured output validated through `parseGeminiAuditOutput`, seven categories scored, findings tagged and grouped, signal references limited to real deterministic IDs (`title.present` etc.), observed/inferred bases present.
+- **Live failure mapping through `vercel dev`:** provider overload (`503`) surfaced as retryable `502 UPSTREAM_FAILURE`; AI deadline overrun surfaced as retryable `504 TIMEOUT`; missing key verified live as non-retryable `503 MISSING_CONFIGURATION`. Client responses carried only the stable envelope; server logs contained classification lines only (`kind=… status=…`) — no prompts, responses, or credentials. The API key value was grep-verified absent from all logs.
+- **Pending at phase close:** one successful `200` response from `/api/analyze` itself. The free tier enforces a per-model daily cap (`GenerateRequestsPerDayPerProjectPerModel-FreeTier`, 20 requests/day/model) and both tested model buckets were consumed by diagnostic bisection before a full request landed. Re-run after quota reset with `npm run verify:gemini` — it starts `vercel dev` on a private port, sends exactly ONE real analysis of a known-safe public page, validates the full report contract, classifies any failure (local configuration / auth / quota / unavailable / malformed / app bug), prints only sanitized diagnostics, and exits non-zero unless the contract-valid report arrives.
+
 
 
 

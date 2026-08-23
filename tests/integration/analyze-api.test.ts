@@ -7,6 +7,7 @@ import {
 } from "../../src/shared/audit-types";
 import type { AnalysisOutcome } from "../../src/server/pipeline";
 import { createApp } from "../../src/server/http/app";
+import { sampleReport } from "../../src/shared/sample-report";
 
 function postJson(
   body: unknown,
@@ -95,8 +96,10 @@ const SAMPLE_SIGNALS = [
 
 const successOutcome: AnalysisOutcome = {
   ok: true,
-  finalUrl: "https://example.com/",
-  signals: SAMPLE_SIGNALS,
+  report: {
+    ...sampleReport,
+    observedSignals: SAMPLE_SIGNALS,
+  },
 };
 
 function failure(
