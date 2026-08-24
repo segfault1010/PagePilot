@@ -1,0 +1,92 @@
+import type { DetectedSignal } from "../../../../shared/audit-types";
+import { SIGNAL_STATUS_LABELS } from "../labels";
+import { Badge } from "./badge";
+
+const STATUS_TONE = {
+  pass: "muted",
+  warn: "solid",
+  unknown: "outline",
+} as const;
+
+/**
+ * Low-priority methodology disclosure: what was measured versus interpreted,
+ * what static HTML analysis cannot measure, and the raw deterministic
+ * signals. Collapsed by default to keep the report scannable.
+ */
+export function ObservedSignals({ signals }: { signals: DetectedSignal[] }) {
+  return (
+    <section className="mt-12 sm:mt-14" aria-labelledby="signals-heading">
+      <h2
+        id="signals-heading"
+        className="text-xl font-semibold tracking-tight text-neutral-50"
+      >
+        Methodology &amp; observed signals
+      </h2>
+      <p className="mt-2 max-w-2xl text-sm leading-6 text-neutral-500">
+        How this audit reaches its conclusions.
+      </p>
+
+      <dl className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
+          <dt className="text-xs font-semibold uppercase tracking-wide text-neutral-300">
+            Observed
+          </dt>
+          <dd className="mt-1 text-sm leading-6 text-neutral-400">
+            Directly detected from the page's HTML structure and content.
+          </dd>
+        </div>
+        <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
+          <dt className="text-xs font-semibold uppercase tracking-wide text-neutral-300">
+            Inferred
+          </dt>
+          <dd className="mt-1 text-sm leading-6 text-neutral-400">
+            AI interpretation based on the supplied evidence — judgement, not
+            measurement.
+          </dd>
+        </div>
+      </dl>
+
+      <div className="mt-4 rounded-xl border border-dashed border-neutral-800 px-4 py-3.5">
+        <p className="text-xs leading-5 text-neutral-500">
+          This analysis reads static HTML only. It does not measure page speed,
+          Core Web Vitals, exact visual contrast, real mobile rendering,
+          conversion rate, or user behavior. Signals marked{" "}
+          <span className="text-neutral-300">Not measured</span> lacked enough
+          page evidence and never reduce a score.
+        </p>
+      </div>
+
+      {signals.length === 0 ? (
+        <p className="mt-4 rounded-xl border border-dashed border-neutral-800 px-4 py-4 text-sm leading-6 text-neutral-500">
+          No deterministic signals were collected for this analysis; the score
+          reflects AI assessment of the available evidence only.
+        </p>
+      ) : (
+        <details className="group mt-4 rounded-xl border border-neutral-800 bg-neutral-900">
+          <summary className="cursor-pointer select-none px-5 py-4 text-sm font-medium text-neutral-200 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/80">
+            View all {signals.length} observed signal
+            {signals.length === 1 ? "" : "s"}
+          </summary>
+          <ul className="divide-y divide-neutral-800 border-t border-neutral-800 px-5">
+            {signals.map((signal) => (
+              <li
+                key={signal.id}
+                className="flex flex-col gap-1.5 py-3.5 sm:flex-row sm:items-center sm:gap-4"
+              >
+                <code className="shrink-0 text-xs text-neutral-500">
+                  {signal.id}
+                </code>
+                <Badge tone={STATUS_TONE[signal.status]}>
+                  {SIGNAL_STATUS_LABELS[signal.status]}
+                </Badge>
+                <span className="text-sm leading-6 text-neutral-400">
+                  {signal.evidence}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </section>
+  );
+}

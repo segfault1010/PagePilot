@@ -29,6 +29,7 @@ export const scoreConfidenceSchema = z.enum(["blended", "ai-led"]);
 export type ScoreConfidence = z.infer<typeof scoreConfidenceSchema>;
 
 export const signalStatusSchema = z.enum(["pass", "warn", "unknown"]);
+export type SignalStatus = z.infer<typeof signalStatusSchema>;
 
 // ---------------------------------------------------------------------------
 // API request
@@ -59,6 +60,12 @@ export const findingSchema = z.object({
   basis: z.enum(["observed", "inferred"]),
   signalIds: z.array(z.string()),
   recommendation: z.string().min(1),
+  /**
+   * Present on top problems only: category findings inherit their category
+   * from their parent CategoryReport. Optional so existing payloads and
+   * fixtures stay valid.
+   */
+  category: auditCategorySchema.optional(),
 });
 export type Finding = z.infer<typeof findingSchema>;
 

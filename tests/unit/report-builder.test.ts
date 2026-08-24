@@ -88,12 +88,17 @@ describe("buildReport", () => {
     for (const problem of report.topProblems) {
       expect(Object.keys(problem).sort()).toEqual([
         "basis",
+        "category",
         "evidence",
         "recommendation",
         "severity",
         "signalIds",
         "title",
       ]);
+      // The validated Gemini category reference survives into the contract.
+      expect(report.categories.map((c) => c.category)).toContain(
+        problem.category,
+      );
     }
   });
 

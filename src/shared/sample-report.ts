@@ -36,7 +36,7 @@ function makeCategory(category: AuditCategory): CategoryReport {
   };
 }
 
-function makeFinding(title: string): Finding {
+function makeFinding(title: string, category: AuditCategory): Finding {
   return {
     title,
     severity: "medium",
@@ -44,6 +44,7 @@ function makeFinding(title: string): Finding {
     basis: "inferred",
     signalIds: ["title.present"],
     recommendation: "Sample recommendation.",
+    category,
   };
 }
 
@@ -72,9 +73,9 @@ export const sampleReport: Report = {
   summary: "Sample fixture report used by contract tests.",
   categories: ALL_CATEGORIES.map(makeCategory),
   topProblems: [
-    makeFinding("Weak call to action"),
-    makeFinding("Thin page copy"),
-    makeFinding("Missing image alt text"),
+    makeFinding("Weak call to action", "ctaEffectiveness"),
+    makeFinding("Thin page copy", "copy"),
+    makeFinding("Missing image alt text", "accessibility"),
   ],
   quickWins: [
     makeRecommendation("Sharpen the primary CTA"),

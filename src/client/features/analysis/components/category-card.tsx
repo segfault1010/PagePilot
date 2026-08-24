@@ -1,8 +1,14 @@
 import type { CategoryReport } from "../../../../shared/audit-types";
-import { CATEGORY_LABELS, CONFIDENCE_LABELS, SEVERITY_LABELS } from "../labels";
+import {
+  CATEGORY_LABELS,
+  SEVERITY_LABELS,
+} from "../labels";
 import { Badge, SEVERITY_TONE } from "./badge";
+import { FindingList } from "./finding-list";
 
 export function CategoryCard({ category }: { category: CategoryReport }) {
+  const findingCount = category.findings.length;
+
   return (
     <article className="flex h-full flex-col rounded-xl border border-neutral-800 bg-neutral-900 p-5">
       <div className="flex items-start justify-between gap-3">
@@ -11,7 +17,7 @@ export function CategoryCard({ category }: { category: CategoryReport }) {
         </h3>
         <span
           className="text-xl font-semibold tabular-nums text-white"
-          aria-label={`Score ${category.score} out of 100`}
+          aria-label={`${CATEGORY_LABELS[category.category]} score ${category.score} out of 100`}
         >
           {category.score}
         </span>
@@ -25,31 +31,25 @@ export function CategoryCard({ category }: { category: CategoryReport }) {
           style={{ width: `${category.score}%` }}
         />
       </div>
-      <div className="mt-3">
-        <Badge tone="outline">{CONFIDENCE_LABELS[category.confidence]}</Badge>
+      <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1.5">
+        <Badge tone={SEVERITY_TONE[category.severity]}>
+          {SEVERITY_LABELS[category.severity]}
+        </Badge>
+        <span className="text-xs text-neutral-600">
+          {findingCount === 0
+            ? "No findings"
+            : `${findingCount} ${findingCount === 1 ? "finding" : "findings"}`}
+        </span>
+        {category.confidence === "ai-led" && (
+          <Badge tone="outline">Limited page signals</Badge>
+        )}
       </div>
       <p className="mt-3 text-sm leading-6 text-neutral-400">
         {category.explanation}
       </p>
-      {category.findings.length > 0 && (
-        <ul className="mt-4 space-y-3 border-t border-neutral-800 pt-4">
-          {category.findings.map((finding) => (
-            <li key={finding.title}>
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium text-neutral-200">
-                  {finding.title}
-                </span>
-                <Badge tone={SEVERITY_TONE[finding.severity]}>
-                  {SEVERITY_LABELS[finding.severity]}
-                </Badge>
-              </div>
-              <p className="mt-1 text-xs leading-5 text-neutral-500">
-                {finding.evidence}
-              </p>
-            </li>
-          ))}
-        </ul>
-      )}
+      <div className="mt-auto">
+        <FindingList findings={category.findings} />
+      </div>
     </article>
   );
 }

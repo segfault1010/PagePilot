@@ -205,6 +205,7 @@ export function buildReport(params: BuildReportParams): Report {
     basis: problem.basis,
     signalIds: problem.signalIds,
     recommendation: problem.recommendation,
+    category: problem.category,
   }));
 
   const quickWins: Recommendation[] = params.audit.quickWins.map((win) => ({
