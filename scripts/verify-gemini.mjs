@@ -14,14 +14,14 @@
  * - makes no code-path changes; failure classification is read-only
  */
 
-import { spawn } from "node:child_process";
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { spawn, execSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const PORT = 3210;
-const BASE = `http://127.0.0.1:${PORT}`;
+let BASE = `http://127.0.0.1:${PORT}`;
 const TARGET_URL = "https://example.com";
-const SERVER_READY_TIMEOUT_MS = 60_000;
+const SERVER_READY_TIMEOUT_MS = 120_000;
 const REQUEST_TIMEOUT_MS = 90_000;
 
 const ROOT = process.cwd();
@@ -44,33 +44,78 @@ function readEnvFile() {
   return out;
 }
 
-function waitForServer(deadline) {
-  return new Promise((resolve, reject) => {
-    const tick = async () => {
-      if (Date.now() > deadline) {
-        reject(new Error("vercel dev did not become ready in time"));
-        return;
-      }
+let serverReady = false;
+let actualPort = PORT;
+const recentOutput = [];
+function handleServerOutput(chunk) {
+  for (const line of chunk.toString().split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) continue;
+    recentOutput.push(trimmed);
+    if (recentOutput.length > 12) recentOutput.shift();
+    const readyMatch = /Ready! Available at http:\/\/(?:localhost|127\.0\.0\.1):(\d+)/.exec(trimmed);
+    if (readyMatch) {
+      actualPort = Number(readyMatch[1]);
+      BASE = `http://127.0.0.1:${actualPort}`;
+      serverReady = true;
+      console.log(`  server reported ready on port ${actualPort}`);
+    }
+    if (trimmed.includes("[ai]")) {
+      // Sanitized by the server by design; safe to surface.
+      console.log(`  server: ${trimmed}`);
+      aiLogs.push(trimmed);
+    }
+  }
+}
+
+async function waitForServer(deadline) {
+  while (Date.now() < deadline) {
+    if (serverReady) {
       try {
         const res = await fetch(BASE, { signal: AbortSignal.timeout(2000) });
-        resolve(res.status);
+        return res.status;
       } catch {
-        setTimeout(tick, 1500);
+        /* not accepting yet */
       }
-    };
-    tick();
-  });
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+  }
+  throw new Error(
+    `vercel dev did not become ready in time. Last output:\n  ${recentOutput.join("\n  ")}`,
+  );
 }
 
 function stopServer(child) {
   try {
-    if (process.platform === "win32") {
-      spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore" });
-    } else {
-      process.kill(-child.pid, "SIGTERM");
-    }
+    child.stdout?.destroy();
+    child.stderr?.destroy();
   } catch {
     /* best effort */
+  }
+  const killTree = (pid) => {
+    try {
+      if (process.platform === "win32") {
+        execSync(`taskkill /PID ${pid} /T /F`, { stdio: "ignore" });
+      } else {
+        process.kill(-pid, "SIGTERM");
+      }
+    } catch {
+      /* already gone */
+    }
+  };
+  killTree(child.pid);
+  // Fallback: free the port if any survivor is still listening on it.
+  try {
+    const netstat = execSync(
+      `netstat -ano | findstr :${PORT} | findstr LISTENING`,
+      { stdio: ["ignore", "pipe", "ignore"] },
+    ).toString();
+    for (const line of netstat.split(/\r?\n/)) {
+      const pid = line.trim().split(/\s+/).pop();
+      if (pid && /^\d+$/.test(pid)) killTree(Number(pid));
+    }
+  } catch {
+    /* nothing listening */
   }
 }
 
@@ -153,10 +198,23 @@ function validateReport(report) {
     problems.push("observedSignals empty");
   }
 
-  // Raw-model-output hygiene: none of these may appear anywhere.
+  // Raw-model-output hygiene: no GenerateContent envelope keys may appear.
+  // Match quoted JSON keys so legitimate content like the signal id
+  // "cta.candidates" cannot false-positive.
   const serialized = JSON.stringify(report);
-  for (const marker of ["finishReason", "promptFeedback", "candidates", "systemInstruction"]) {
-    if (serialized.includes(marker)) problems.push(`raw provider artifact "${marker}" leaked into response`);
+  const artifacts = [
+    '"finishReason"',
+    '"promptFeedback"',
+    '"candidates"',
+    '"thoughtSignature"',
+    '"responseId"',
+    '"modelVersion"',
+    '"usageMetadata"',
+  ];
+  for (const marker of artifacts) {
+    if (serialized.includes(marker)) {
+      problems.push(`raw provider artifact ${marker} leaked into response`);
+    }
   }
   return problems;
 }
@@ -180,23 +238,13 @@ const child = spawn("cmd.exe", ["/c", "vercel", "dev", "--listen", String(PORT),
   stdio: ["ignore", "pipe", "pipe"],
 });
 const aiLogs = [];
-const collectAiLines = (chunk) => {
-  for (const line of chunk.toString().split(/\r?\n/)) {
-    if (line.includes("[ai]")) {
-      // Sanitized by the server by design; safe to surface.
-      console.log(`  server: ${line.trim()}`);
-      aiLogs.push(line.trim());
-    }
-  }
-};
-child.stdout.on("data", collectAiLines);
-child.stderr.on("data", collectAiLines);
+child.stdout.on("data", handleServerOutput);
+child.stderr.on("data", handleServerOutput);
 
 let verdict;
 try {
   await waitForServer(Date.now() + SERVER_READY_TIMEOUT_MS);
   console.log("  server ready. sending ONE analysis request…\n");
-
   const res = await fetch(`${BASE}/api/analyze`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
