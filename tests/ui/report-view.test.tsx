@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
+import { CategoryCard } from "../../src/client/features/analysis/components/category-card";
 import { ReportView } from "../../src/client/features/analysis/components/report-view";
 import { richReport, sparseReport } from "../fixtures/reports";
 
@@ -161,7 +162,6 @@ describe("ReportView — sparse report with unknown/empty states", () => {
   function renderSparse() {
     return render(<ReportView report={sparseReport} />);
   }
-
   it("labels ai-led confidence and explains the reliance on AI", () => {
     renderSparse();
 
@@ -205,5 +205,69 @@ describe("ReportView — sparse report with unknown/empty states", () => {
       ).length,
     ).toBe(7);
     expect(within(categories).getAllByText(/no findings/i).length).toBe(7);
+  });
+});
+
+describe("Observed signal state distinction", () => {
+  it("distinguishes pass/warning/not-measured by glyph and shape, not color alone", () => {
+    renderRich();
+    const methodology = region("Methodology & observed signals");
+
+    const cases = [
+      { id: "title.present", label: "Pass", marker: "bg-neutral-800" },
+      { id: "img.altCoverage", label: "Warning", marker: "bg-white" },
+      { id: "forms.present", label: "Not measured", marker: "border-dashed" },
+    ];
+    const classNames = new Set<string>();
+    for (const testCase of cases) {
+      const row = within(methodology).getByText(testCase.id).closest("li");
+      expect(row).toBeTruthy();
+      const badgeText = within(row as HTMLElement).getByText(testCase.label);
+      const badge = badgeText.closest("span");
+      // Every state carries a non-color glyph.
+      expect(badge?.querySelector("svg")).toBeTruthy();
+      expect(badge?.className).toContain(testCase.marker);
+      classNames.add(badge!.className);
+    }
+    // All three states are visibly distinct treatments.
+    expect(classNames.size).toBe(3);
+  });
+
+  it("keeps the not-measured methodology wording intact", () => {
+    render(<ReportView report={sparseReport} />);
+    const methodology = region("Methodology & observed signals");
+    expect(
+      within(methodology).getByText(/never reduce a score/i),
+    ).toBeTruthy();
+  });
+});
+
+describe("Category card condensing", () => {
+  it("visually clamps long explanations while keeping full text in the DOM", () => {
+    const longExplanation =
+      `${"This category has an extensive multi-sentence analysis. ".repeat(12)}END_OF_FULL_TEXT`;
+    render(
+      <CategoryCard
+        category={{ ...richReport.categories[0]!, explanation: longExplanation }}
+      />,
+    );
+
+    const paragraph = screen.getByText(/END_OF_FULL_TEXT/);
+    expect(paragraph.className).toContain("line-clamp-3");
+    // Nothing is removed from the document or accessibility tree.
+    expect(document.body.textContent).toContain(longExplanation);
+    expect(paragraph.getAttribute("title")).toBe(longExplanation);
+  });
+
+  it("keeps name, score, severity, and findings count visible alongside the clamp", () => {
+    render(
+      <CategoryCard category={richReport.categories[0]!} />,
+    );
+
+    expect(screen.getByText("Clarity")).toBeTruthy();
+    expect(screen.getByLabelText("Clarity score 78 out of 100")).toBeTruthy();
+    // Severity appears on the category and its finding.
+    expect(screen.getAllByText("Medium").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("1 finding")).toBeTruthy();
   });
 });

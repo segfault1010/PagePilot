@@ -7,6 +7,17 @@ import { Landing } from "./features/analysis/components/landing";
 import { ReportView } from "./features/analysis/components/report-view";
 import { analyzeUrl } from "./features/analysis/api";
 
+/**
+ * Minimum time the loading view stays up. Fast API responses would
+ * otherwise flash the spinner for a few milliseconds; holding briefly is
+ * calmer than animating a state that has already ended.
+ */
+export const MIN_ANALYSIS_MS = 600;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 type View =
   | { name: "landing" }
   | { name: "analyzing"; url: string }
@@ -41,14 +52,20 @@ export default function App() {
   useEffect(() => {
     if (view.name !== "analyzing") return;
     let cancelled = false;
-    analyzeUrl(view.url).then((result) => {
-      if (cancelled) return;
-      setView(
-        result.ok
-          ? { name: "report", url: view.url, report: result.report }
-          : { name: "failure", url: view.url, error: result.error },
-      );
-    });
+    // The cleanup flag makes any in-flight resolution a no-op once this
+    // effect is superseded, so a stale response can never overwrite the
+    // state of a newer request. Explicit user action (retry button) is the
+    // only way requests are re-issued — no automatic retry loops.
+    Promise.all([analyzeUrl(view.url), delay(MIN_ANALYSIS_MS)]).then(
+      ([result]) => {
+        if (cancelled) return;
+        setView(
+          result.ok
+            ? { name: "report", url: view.url, report: result.report }
+            : { name: "failure", url: view.url, error: result.error },
+        );
+      },
+    );
     return () => {
       cancelled = true;
     };
@@ -69,6 +86,11 @@ export default function App() {
         <MiniHeader onHome={handleBackToLanding} />
         <main className="mx-auto w-full max-w-5xl px-6 pb-20 pt-4 sm:pt-8">
           <h1 className="sr-only">Analysis report</h1>
+          {/* Polite completion announcement; failure announces via its
+              role="alert" region instead. */}
+          <p className="sr-only" role="status">
+            Analysis complete — your report is ready below.
+          </p>
           <div className="fade-rise">
             <ReportView
               report={view.report}

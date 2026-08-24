@@ -19,8 +19,8 @@ export function ReportHeader({ report }: { report: Report }) {
   const redirected = report.source.finalUrl !== report.source.requestedUrl;
 
   return (
-    <header className="rounded-2xl border border-neutral-800 bg-neutral-900 p-6 sm:p-8">
-      <div className="flex flex-col items-center gap-6 sm:flex-row sm:gap-8">
+    <header className="rounded-2xl border border-neutral-800 bg-neutral-900 p-5 sm:p-6">
+      <div className="flex flex-col items-center gap-5 sm:flex-row sm:gap-7">
         <ScoreRing score={report.overallScore} />
         <div className="min-w-0 flex-1 text-center sm:text-left">
           <p className="break-all text-xs leading-5 text-neutral-500">
@@ -29,30 +29,31 @@ export function ReportHeader({ report }: { report: Report }) {
           <p className="mt-1 text-lg font-semibold tracking-tight text-neutral-50">
             {report.source.title ?? "Untitled page"}
           </p>
-          <p className="mt-3 text-2xl font-semibold tracking-tight text-white">
+          <p className="mt-2 text-2xl font-semibold tracking-tight text-white">
             {verdict.label}
           </p>
           <p className="mt-1 text-sm leading-6 text-neutral-400">
             {verdict.description}
           </p>
-          <div className="mt-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 sm:justify-start">
+          <div className="mt-2.5 flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 sm:justify-start">
             <Badge
               tone={report.scoreConfidence === "blended" ? "muted" : "outline"}
             >
               {CONFIDENCE_LABELS[report.scoreConfidence]}
             </Badge>
-            <span className="text-xs text-neutral-600">
+            {/* Metadata, deliberately quiet next to the confidence badge. */}
+            <span className="text-[11px] leading-5 text-neutral-700">
               Analyzed {formatDateTime(report.source.analyzedAt)}
             </span>
           </div>
         </div>
       </div>
 
-      <p className="mt-6 text-pretty text-sm leading-6 text-neutral-300 sm:mt-7 sm:text-base sm:leading-7">
+      <p className="mt-5 text-pretty text-sm leading-6 text-neutral-300 sm:text-base sm:leading-7">
         {report.summary}
       </p>
 
-      <div className="mt-4 rounded-lg border border-neutral-800 bg-neutral-950 px-4 py-3">
+      <div className="mt-3 rounded-lg border border-neutral-800 bg-neutral-950 px-3.5 py-2.5">
         <p className="text-xs leading-5 text-neutral-400">
           <span className="font-semibold text-neutral-300">
             About this score:{" "}
@@ -62,7 +63,7 @@ export function ReportHeader({ report }: { report: Report }) {
       </div>
 
       {redirected && (
-        <p className="mt-3 break-all text-xs text-neutral-600">
+        <p className="mt-2.5 break-all text-xs text-neutral-600">
           Redirected from {report.source.requestedUrl}
         </p>
       )}

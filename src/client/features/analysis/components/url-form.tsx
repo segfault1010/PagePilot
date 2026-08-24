@@ -49,6 +49,9 @@ export function UrlForm({
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? "website-url-error" : undefined}
           disabled={busy}
+          // Autofocus only when returning to a preserved URL (e.g. after
+          // "Edit URL"), not on a fresh first visit.
+          autoFocus={initialValue.trim().length > 0}
           className="h-12 w-full rounded-lg border border-neutral-700 bg-neutral-900 px-4 text-base text-neutral-100 placeholder:text-neutral-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 disabled:cursor-not-allowed disabled:opacity-60"
         />
         <button

@@ -1,12 +1,72 @@
-import type { DetectedSignal } from "../../../../shared/audit-types";
+import type { ReactNode } from "react";
+import type {
+  DetectedSignal,
+  SignalStatus,
+} from "../../../../shared/audit-types";
 import { SIGNAL_STATUS_LABELS } from "../labels";
-import { Badge } from "./badge";
 
-const STATUS_TONE = {
-  pass: "muted",
-  warn: "solid",
-  unknown: "outline",
-} as const;
+/**
+ * Signal states are distinguished by more than color: each has a distinct
+ * glyph, fill treatment, and (for "not measured") a dashed border so
+ * unavailable evidence never reads as failure.
+ */
+const SIGNAL_BADGE_STYLES: Record<SignalStatus, string> = {
+  // Restrained positive: quiet muted fill, check glyph.
+  pass: "border-transparent bg-neutral-800 text-neutral-200",
+  // Most prominent state: highest contrast, alert glyph — actionable.
+  warn: "border-transparent bg-white font-semibold text-neutral-950",
+  // Unavailable evidence, not failure: hollow dashed shape.
+  unknown: "border-dashed border-neutral-500 text-neutral-400",
+};
+
+const SIGNAL_ICONS: Record<SignalStatus, ReactNode> = {
+  pass: (
+    <path
+      d="M2.5 6.5 5 9l4.5-5.5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  ),
+  warn: (
+    <>
+      <path
+        d="M6 2.25v4.25"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+      <circle cx="6" cy="9.25" r="0.85" fill="currentColor" />
+    </>
+  ),
+  unknown: (
+    <circle
+      cx="6"
+      cy="6"
+      r="3.75"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.25"
+      strokeDasharray="1.8 1.8"
+    />
+  ),
+};
+
+function SignalStatusBadge({ status }: { status: SignalStatus }) {
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs ${SIGNAL_BADGE_STYLES[status]}`}
+    >
+      <svg viewBox="0 0 12 12" className="h-3 w-3" aria-hidden="true">
+        {SIGNAL_ICONS[status]}
+      </svg>
+      {SIGNAL_STATUS_LABELS[status]}
+    </span>
+  );
+}
 
 /**
  * Low-priority methodology disclosure: what was measured versus interpreted,
@@ -76,9 +136,7 @@ export function ObservedSignals({ signals }: { signals: DetectedSignal[] }) {
                 <code className="shrink-0 text-xs text-neutral-500">
                   {signal.id}
                 </code>
-                <Badge tone={STATUS_TONE[signal.status]}>
-                  {SIGNAL_STATUS_LABELS[signal.status]}
-                </Badge>
+                <SignalStatusBadge status={signal.status} />
                 <span className="text-sm leading-6 text-neutral-400">
                   {signal.evidence}
                 </span>

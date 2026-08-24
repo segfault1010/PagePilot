@@ -44,7 +44,12 @@ export function CategoryCard({ category }: { category: CategoryReport }) {
           <Badge tone="outline">Limited page signals</Badge>
         )}
       </div>
-      <p className="mt-3 text-sm leading-6 text-neutral-400">
+      {/* Visually clamped for scannability; the full text remains in the
+          DOM and accessibility tree, and is shown on hover via title. */}
+      <p
+        className="mt-3 line-clamp-3 text-sm leading-6 text-neutral-400"
+        title={category.explanation}
+      >
         {category.explanation}
       </p>
       <div className="mt-auto">

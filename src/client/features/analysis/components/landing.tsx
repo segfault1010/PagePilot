@@ -13,7 +13,7 @@ export function Landing({
 }) {
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-6">
+      <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-5">
         <a
           href="/"
           aria-label="PagePilot home"
@@ -27,37 +27,37 @@ export function Landing({
       </header>
 
       <main className="flex-1">
-        <section className="mx-auto w-full max-w-3xl px-6 pb-16 pt-14 text-center sm:pt-24">
+        <section className="mx-auto w-full max-w-3xl px-6 pb-14 pt-10 text-center sm:pb-16 sm:pt-16">
           <p className="fade-rise mx-auto w-fit rounded-full border border-neutral-800 px-3.5 py-1 text-xs font-medium uppercase tracking-widest text-neutral-400">
             AI-powered UX audits
           </p>
           <h1
-            className="fade-rise mt-6 text-balance text-4xl font-semibold leading-[1.1] tracking-tight text-neutral-50 sm:text-5xl lg:text-6xl"
+            className="fade-rise mt-5 text-balance text-4xl font-semibold leading-[1.1] tracking-tight text-neutral-50 sm:text-5xl lg:text-6xl"
             style={{ animationDelay: "60ms" }}
           >
             Find what's hurting your landing page.
           </h1>
           <p
-            className="fade-rise mx-auto mt-5 max-w-xl text-pretty text-base leading-7 text-neutral-400 sm:text-lg sm:leading-8"
+            className="fade-rise mx-auto mt-4 max-w-xl text-pretty text-base leading-7 text-neutral-400 sm:text-lg sm:leading-8"
             style={{ animationDelay: "120ms" }}
           >
             PagePilot uses AI to audit your landing page and turn UX problems
             into actionable fixes.
           </p>
           <div
-            className="fade-rise mx-auto mt-9 max-w-xl"
+            className="fade-rise mx-auto mt-8 max-w-xl"
             style={{ animationDelay: "180ms" }}
           >
             <UrlForm initialValue={initialUrl} onSubmit={onAnalyze} />
           </div>
-          <p className="mt-4 text-xs text-neutral-600">
+          <p className="mt-3 text-xs text-neutral-600">
             Paste a public URL. Nothing is stored — reports are generated on
             the fly.
           </p>
         </section>
 
         <section
-          className="mx-auto w-full max-w-6xl px-6 pb-24"
+          className="mx-auto w-full max-w-6xl px-6 pb-20"
           aria-labelledby="example-report-heading"
         >
           <div className="max-w-2xl">

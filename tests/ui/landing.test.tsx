@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import App from "../../src/client/App";
+import App, { MIN_ANALYSIS_MS } from "../../src/client/App";
 import { analyzeUrl } from "../../src/client/features/analysis/api";
 import type { AnalyzeResult } from "../../src/client/features/analysis/api";
 import { sampleReport as report } from "../../src/shared/sample-report";
@@ -14,12 +14,14 @@ vi.mock("../../src/client/features/analysis/api", () => ({
 const mockedAnalyzeUrl = vi.mocked(analyzeUrl);
 
 beforeEach(() => {
+  vi.useFakeTimers();
   window.scrollTo = () => {};
   mockedAnalyzeUrl.mockReset();
 });
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
 });
 
 function submitUrl(value: string) {
@@ -29,9 +31,16 @@ function submitUrl(value: string) {
   fireEvent.click(screen.getByRole("button", { name: /analyze website/i }));
 }
 
+/**
+ * Drives the request lifecycle past its minimum loading hold so the
+ * mocked response is allowed to transition the view.
+ */
 async function flushApi() {
   await act(async () => {
-    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(0);
+  });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(MIN_ANALYSIS_MS);
   });
 }
 
@@ -89,14 +98,46 @@ describe("App landing states", () => {
 
     await flushApi();
 
+    expect(mockedAnalyzeUrl).toHaveBeenCalledTimes(1);
     expect(mockedAnalyzeUrl).toHaveBeenCalledWith("https://example.com/");
     expect(screen.getByText(/quick wins/i)).toBeTruthy();
     expect(
       screen.getByRole("img", { name: /overall score 70 out of 100/i }),
     ).toBeTruthy();
-    // Phase 5: the real report renders; the placeholder disclosure is gone.
     expect(screen.queryByText(/preview build/i)).toBeNull();
     expect(screen.getByText(report.summary)).toBeTruthy();
+  });
+
+  it("keeps the loading view stable through the minimum hold (no flash)", async () => {
+    mockedAnalyzeUrl.mockResolvedValueOnce(successResult());
+    render(<App />);
+    submitUrl("https://example.com");
+
+    // Response resolves instantly, but the loading state must still hold
+    // briefly instead of flashing.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByText(/checking url/i)).toBeTruthy();
+    expect(screen.queryByText(/quick wins/i)).toBeNull();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(MIN_ANALYSIS_MS - 1);
+    });
+    expect(screen.getByText(/checking url/i)).toBeTruthy();
+
+    await flushApi();
+    expect(screen.getByText(/quick wins/i)).toBeTruthy();
+  });
+
+  it("announces completion politely when the report is ready", async () => {
+    mockedAnalyzeUrl.mockResolvedValueOnce(successResult());
+    render(<App />);
+    submitUrl("https://example.com");
+    await flushApi();
+
+    const status = screen.getByRole("status");
+    expect(status.textContent).toMatch(/report is ready/i);
   });
 
   it("goes loading → API → failure with the URL preserved", async () => {
@@ -106,11 +147,22 @@ describe("App landing states", () => {
 
     await flushApi();
 
-    expect(screen.getByRole("alert").textContent).toMatch(
-      /analysis engine unavailable/i,
-    );
+    expect(screen.getByText(/analysis engine unavailable/i)).toBeTruthy();
     expect(screen.getByText(/https:\/\/example\.com/)).toBeTruthy();
     expect(screen.getByText(/audit engine could not be reached/i)).toBeTruthy();
+    // No stale loading artifacts remain.
+    expect(screen.queryByText(/checking url/i)).toBeNull();
+    expect(screen.queryByLabelText(/analyzing website/i)).toBeNull();
+  });
+
+  it("moves focus to the primary recovery action after a failure", async () => {
+    mockedAnalyzeUrl.mockResolvedValueOnce(failureResult());
+    render(<App />);
+    submitUrl("https://example.com");
+    await flushApi();
+
+    const active = document.activeElement;
+    expect(active?.textContent).toMatch(/try again/i);
   });
 
   it("maps network failures to connection copy", async () => {
@@ -127,28 +179,28 @@ describe("App landing states", () => {
 
     await flushApi();
 
-    expect(screen.getByRole("alert").textContent).toMatch(
-      /connection problem/i,
-    );
+    expect(screen.getByText(/connection problem/i)).toBeTruthy();
   });
 
-  it("retries after a failure and reaches the report", async () => {
+  it("retries after a failure with exactly one new request", async () => {
     mockedAnalyzeUrl
       .mockResolvedValueOnce(failureResult())
       .mockResolvedValueOnce(successResult());
     render(<App />);
     submitUrl("https://example.com");
     await flushApi();
+    expect(mockedAnalyzeUrl).toHaveBeenCalledTimes(1);
 
     fireEvent.click(screen.getByRole("button", { name: /try again/i }));
     expect(screen.getByText(/checking url/i)).toBeTruthy();
+    expect(mockedAnalyzeUrl).toHaveBeenCalledTimes(2);
 
     await flushApi();
     expect(mockedAnalyzeUrl).toHaveBeenCalledTimes(2);
     expect(screen.getByText(/quick wins/i)).toBeTruthy();
   });
 
-  it("returns to the landing page via Edit URL with the URL preserved", async () => {
+  it("returns to the landing page via Edit URL, preserving the URL and focusing it", async () => {
     mockedAnalyzeUrl.mockResolvedValueOnce(failureResult());
     render(<App />);
     submitUrl("https://example.com");
@@ -157,6 +209,7 @@ describe("App landing states", () => {
     fireEvent.click(screen.getByRole("button", { name: /edit url/i }));
     const input = screen.getByLabelText(/website url/i) as HTMLInputElement;
     expect(input.value).toBe("https://example.com/");
+    expect(document.activeElement).toBe(input);
   });
 
   it("returns to the landing page from the report", async () => {

@@ -3,7 +3,7 @@ import { FindingCard } from "./finding-card";
 
 export function TopProblems({ problems }: { problems: Finding[] }) {
   return (
-    <section className="mt-10 sm:mt-14" aria-labelledby="top-problems-heading">
+    <section className="mt-8 sm:mt-12" aria-labelledby="top-problems-heading">
       <h2
         id="top-problems-heading"
         className="text-xl font-semibold tracking-tight text-neutral-50"
@@ -11,7 +11,7 @@ export function TopProblems({ problems }: { problems: Finding[] }) {
         Top problems
       </h2>
       <p className="mt-2 max-w-2xl text-sm leading-6 text-neutral-500">
-        The three issues most likely to cost you visitors, ranked by impact.
+        The three highest-priority issues identified by the audit.
       </p>
       <ol className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-3">
         {problems.map((problem, index) => (
