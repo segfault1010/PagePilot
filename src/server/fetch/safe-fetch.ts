@@ -4,10 +4,10 @@ import type { IncomingMessage } from "node:http";
 import type { LookupFunction } from "node:net";
 import type { Readable } from "node:stream";
 import zlib from "node:zlib";
-import { enforceUrlPolicy } from "../../shared/url-policy";
-import { isPubliclyRoutableAddress } from "./ip-policy";
-import type { DnsResolver, ResolvedAddress } from "./resolver";
-import { defaultDnsResolver } from "./resolver";
+import { enforceUrlPolicy } from "../../shared/url-policy.js";
+import { isPubliclyRoutableAddress } from "./ip-policy.js";
+import type { DnsResolver, ResolvedAddress } from "./resolver.js";
+import { defaultDnsResolver } from "./resolver.js";
 
 export const MAX_PAGE_BYTES = 1_572_864; // 1.5 MB of decoded HTML
 export const FETCH_DEADLINE_MS = 8_000;

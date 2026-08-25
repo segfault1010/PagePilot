@@ -1,5 +1,5 @@
-import type { DetectedSignal } from "../../shared/audit-types";
-import type { PageSnapshot } from "../extract/page-snapshot";
+import type { DetectedSignal } from "../../shared/audit-types.js";
+import type { PageSnapshot } from "../extract/page-snapshot.js";
 
 /**
  * Builds the compact, bounded evidence object sent to Gemini (Phase 5).

@@ -4,7 +4,7 @@ import {
   AUDIT_CATEGORIES,
   auditCategorySchema,
   severitySchema,
-} from "../../shared/audit-types";
+} from "../../shared/audit-types.js";
 
 /**
  * Strict validation for Gemini's structured audit output (Phase 5).

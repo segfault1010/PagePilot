@@ -1,5 +1,5 @@
-import type { DetectedSignal } from "../../shared/audit-types";
-import type { PageSnapshot } from "./page-snapshot";
+import type { DetectedSignal } from "../../shared/audit-types.js";
+import type { PageSnapshot } from "./page-snapshot.js";
 
 /**
  * Deterministic checks over the PageSnapshot. Every signal has a stable ID,

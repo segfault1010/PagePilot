@@ -1,4 +1,4 @@
-import { API_ERROR_CODES } from "./audit-types";
+import { API_ERROR_CODES } from "./audit-types.js";
 
 export type UrlPolicyResult =
   | { ok: true; url: string }

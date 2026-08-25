@@ -161,6 +161,24 @@ Performed against the real Gemini API with `GEMINI_API_KEY` from local `.env`, m
 - **Live failure mapping through `vercel dev`:** provider overload (`503`) surfaced as retryable `502 UPSTREAM_FAILURE`; AI deadline overrun surfaced as retryable `504 TIMEOUT`; missing key verified live as non-retryable `503 MISSING_CONFIGURATION`. Client responses carried only the stable envelope; server logs contained classification lines only (`kind=… status=…`) — no prompts, responses, or credentials. The API key value was grep-verified absent from all logs.
 - **Pending at phase close:** one successful `200` response from `/api/analyze` itself. The free tier enforces a per-model daily cap (`GenerateRequestsPerDayPerProjectPerModel-FreeTier`, 20 requests/day/model) and both tested model buckets were consumed by diagnostic bisection before a full request landed. Re-run after quota reset with `npm run verify:gemini` — it starts `vercel dev` on a private port, sends exactly ONE real analysis of a known-safe public page, validates the full report contract, classifies any failure (local configuration / auth / quota / unavailable / malformed / app bug), prints only sanitized diagnostics, and exits non-zero unless the contract-valid report arrives.
 
+## D35 — ESM .js extensions for Vercel Node runtime (Phase 8)
+
+Production deployment failed with `ERR_MODULE_NOT_FOUND: Cannot find module '/var/task/src/server/http/app'`. The package has `"type": "module"` and `module: ESNext`; Node ESM requires explicit file extensions, but server imports were extensionless (`../src/server/http/app`). Vercel's `@vercel/node` builder traces `api/analyze.ts` and copies `src/` files separately — compiled JS keeps specifiers verbatim, so extensionless imports fail at runtime while tests (Vitest/bundler) tolerate them.
+
+Fix: all server and shared relative imports now use `.js` extensions (`../src/server/http/app.js`, `../../shared/audit-types.js`, etc.). TypeScript `module: ESNext` + `moduleResolution: bundler` + `noEmit: true` resolves `.js` → `.ts` during typecheck, and the emitted JS retains `.js` for Node. Client imports stay extensionless (Vite handles both). No `allowImportingTsExtensions` needed. Verified: `npm run typecheck`, `npm test`, `npm run build` still pass, and the deployed function loads.
+
+## D36 — Lightweight per-IP throttle (Phase 8)
+
+PLAN and AGENTS require 5 requests per 10 minutes per warm instance as cost protection. Prior phases deferred it (`NOT_IMPLEMENTED`). Phase 8 adds it in `src/server/http/app.ts` as a per-`createApp()` in-memory Map (one per warm Lambda, cold starts reset). IP extraction: `x-forwarded-for` (first) → `x-real-ip` → `req.ip` → `socket.remoteAddress`. Exceeding returns `429 RATE_LIMITED` (`retryable: true`). Isolation per `createApp()` keeps existing integration tests independent (each test creates a fresh app). Live 429 is not forced in production to avoid disrupting the deployed service; it is covered by dedicated unit/integration tests and documented as such. Documented in README with verification note.
+
+## D37 — Production verification and artifact hygiene (Phase 8)
+
+Pre-deploy review confirmed: real Phase 5 pipeline (not sample-report) serves `POST /api/analyze`; landing preview remains the only sample-data usage (labeled). API contracts, Gemini server-only credentials, SSRF protections, and error envelopes unchanged. `.env` stays gitignored, `.vercel` ignored, `.env.example` placeholders only, no secret committed, no debug logs, no `payload.json` or temp artifacts committed (payload removed from tracking, `.gitignore` updated). `vercel.json` verified (`vite` build, `dist` output, `/api/:path*` rewrite, `maxDuration:30`, `Cache-Control: no-store`). Production build inspected: `dist/index.html` has no `@react-refresh`/`data-vite-dev-id`, no `GEMINI_API_KEY`/`localhost`/`127.0.0.1`, correct meta/title/assets.
+
+## D38 — Final MVP scope (Phase 8)
+
+Phase 8 is deployment/polish only. No stretch features added: no Playwright, screenshots, Lighthouse, PDF export, sharing/history, auth, database, analytics, payments, notifications. `docs/PLAN.md` remains the source of truth; README now documents setup, `vercel dev`, env vars, testing, deployment, security boundary, and limitations (static HTML only, AI-led vs blended scoring). The MVP acceptance criterion is a deployed URL that analyzes a safe public page and returns a schema-valid report while unsafe destinations remain safely handled.
+
 
 
 

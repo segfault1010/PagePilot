@@ -1,13 +1,13 @@
-import { createSafeFetcher, SafeFetchError } from "./fetch/safe-fetch";
-import { buildPageSnapshot } from "./extract/page-snapshot";
-import { runDeterministicChecks } from "./extract/deterministic-checks";
-import { createGeminiAuditor, AiError, DEFAULT_GEMINI_MODEL } from "./ai/gemini-auditor";
-import type { UxAuditProvider } from "./ai/gemini-auditor";
-import { buildAuditModelInput } from "./ai/audit-input";
-import { checkSignalReferences, geminiAuditSchema } from "./schemas/audit";
-import { buildReport } from "./scoring/score-report";
-import { API_ERROR_CODES } from "../shared/audit-types";
-import type { Report } from "../shared/audit-types";
+import { createSafeFetcher, SafeFetchError } from "./fetch/safe-fetch.js";
+import { buildPageSnapshot } from "./extract/page-snapshot.js";
+import { runDeterministicChecks } from "./extract/deterministic-checks.js";
+import { createGeminiAuditor, AiError, DEFAULT_GEMINI_MODEL } from "./ai/gemini-auditor.js";
+import type { UxAuditProvider } from "./ai/gemini-auditor.js";
+import { buildAuditModelInput } from "./ai/audit-input.js";
+import { checkSignalReferences, geminiAuditSchema } from "./schemas/audit.js";
+import { buildReport } from "./scoring/score-report.js";
+import { API_ERROR_CODES } from "../shared/audit-types.js";
+import type { Report } from "../shared/audit-types.js";
 
 export interface AnalysisSuccess {
   report: Report;

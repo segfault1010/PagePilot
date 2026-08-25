@@ -1,14 +1,61 @@
 import express from "express";
 import type { Express, NextFunction, Request, Response } from "express";
-import { API_ERROR_CODES } from "../../shared/audit-types";
-import { enforceUrlPolicy } from "../../shared/url-policy";
-import { analyzeRequestSchema } from "../../shared/audit-types";
-import type { AnalysisOutcome } from "../pipeline";
-import { analyzeTarget } from "../pipeline";
+import { API_ERROR_CODES } from "../../shared/audit-types.js";
+import { enforceUrlPolicy } from "../../shared/url-policy.js";
+import { analyzeRequestSchema } from "../../shared/audit-types.js";
+import type { AnalysisOutcome } from "../pipeline.js";
+import { analyzeTarget } from "../pipeline.js";
 
 // Matches the planned 4 KB JSON request limit.
 const MAX_JSON_BODY_BYTES = "4kb";
 const MAX_JSON_BODY_LIMIT_BYTES = 4096;
+
+// Lightweight per-IP throttle: 5 requests per 10 minutes per warm instance.
+// Cost protection, not authentication — in-memory only and resets on cold start.
+const RATE_LIMIT_MAX = 5;
+const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
+
+// Exported for test setup; production code never calls it directly.
+const _globalRateLimit = new Map<string, { count: number; windowStart: number }>();
+export function clearRateLimit(): void {
+  _globalRateLimit.clear();
+}
+
+function getClientIp(req: Request): string {
+  const forwarded = req.headers["x-forwarded-for"];
+  if (typeof forwarded === "string" && forwarded.length > 0) {
+    // Vercel sets x-forwarded-for as comma-separated; first is the client.
+    const first = forwarded.split(",")[0]?.trim();
+    if (first) return first;
+  } else if (Array.isArray(forwarded) && forwarded.length > 0) {
+    const first = forwarded[0]?.split(",")[0]?.trim();
+    if (first) return first;
+  }
+  const realIp = req.headers["x-real-ip"];
+  if (typeof realIp === "string" && realIp.length > 0) return realIp.trim();
+  // Express's req.ip is populated when trust proxy is configured; fall back
+  // to the socket remote address for plain Node environments (tests).
+  const maybeIp = (req as { ip?: string }).ip;
+  if (typeof maybeIp === "string" && maybeIp.length > 0) return maybeIp;
+  return req.socket.remoteAddress ?? "unknown";
+}
+
+function makeRateLimiter() {
+  // Per-app (per warm instance) map. When api/analyze.ts creates a single app
+  // at module load, this map lives as long as the instance stays warm.
+  const ipRateLimit = new Map<string, { count: number; windowStart: number }>();
+  return (ip: string): boolean => {
+    const now = Date.now();
+    const entry = ipRateLimit.get(ip);
+    if (!entry || now - entry.windowStart >= RATE_LIMIT_WINDOW_MS) {
+      ipRateLimit.set(ip, { count: 1, windowStart: now });
+      return false;
+    }
+    if (entry.count >= RATE_LIMIT_MAX) return true;
+    entry.count += 1;
+    return false;
+  };
+}
 
 export interface AppOptions {
   /** Injectable for tests; production uses the real safe-fetch pipeline. */
@@ -81,6 +128,7 @@ interface BodyParserFailure {
 
 export function createApp(options: AppOptions = {}): Express {
   const analyzeUrl = options.analyzeUrl ?? analyzeTarget;
+  const isRateLimited = makeRateLimiter();
   const app = express();
 
   app.disable("x-powered-by");
@@ -119,6 +167,19 @@ export function createApp(options: AppOptions = {}): Express {
   });
 
   app.post("/api/analyze", (req, res) => {
+    // Cheap cost protection before any heavy work (fetch, AI).
+    const clientIp = getClientIp(req);
+    if (isRateLimited(clientIp)) {
+      sendApiError(
+        res,
+        429,
+        API_ERROR_CODES.rateLimited,
+        "Too many requests. Please wait a few minutes and try again.",
+        true,
+      );
+      return;
+    }
+
     const requestParse = analyzeRequestSchema.safeParse(req.body);
     if (!requestParse.success) {
       sendApiError(

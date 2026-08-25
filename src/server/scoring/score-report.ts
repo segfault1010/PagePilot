@@ -1,7 +1,7 @@
 import {
   AUDIT_CATEGORIES,
   reportSchema,
-} from "../../shared/audit-types";
+} from "../../shared/audit-types.js";
 import type {
   AuditCategory,
   CategoryReport,
@@ -10,8 +10,8 @@ import type {
   Recommendation,
   Report,
   ScoreConfidence,
-} from "../../shared/audit-types";
-import type { GeminiAudit } from "../schemas/audit";
+} from "../../shared/audit-types.js";
+import type { GeminiAudit } from "../schemas/audit.js";
 
 /**
  * Server-side scoring (Phase 5).

@@ -4,7 +4,7 @@ import type {
   Finding,
   Recommendation,
   Report,
-} from "./audit-types";
+} from "./audit-types.js";
 
 const ALL_CATEGORIES: AuditCategory[] = [
   "clarity",

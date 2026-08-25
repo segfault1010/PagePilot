@@ -19,4 +19,6 @@ coverage/
 .DS_Store
 Thumbs.db
 
-.vercel
+# Temporary / debug artifacts
+payload.json
+*.log

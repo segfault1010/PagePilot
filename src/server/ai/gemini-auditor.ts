@@ -1,7 +1,7 @@
-import type { GeminiAudit } from "../schemas/audit";
-import { geminiResponseJsonSchema, parseGeminiAuditOutput } from "../schemas/audit";
-import type { AuditModelInput } from "./audit-input";
-import { serializeModelInput } from "./audit-input";
+import type { GeminiAudit } from "../schemas/audit.js";
+import { geminiResponseJsonSchema, parseGeminiAuditOutput } from "../schemas/audit.js";
+import type { AuditModelInput } from "./audit-input.js";
+import { serializeModelInput } from "./audit-input.js";
 
 /**
  * Focused Gemini adapter (Phase 5). All provider-specific logic lives here:
