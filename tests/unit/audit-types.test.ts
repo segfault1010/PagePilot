@@ -3,7 +3,7 @@ import {
   analyzeErrorResponseSchema,
   analyzeRequestSchema,
   reportSchema,
-} from "../../src/shared/audit-types";
+} from "@pagepilot/contracts";
 import { sampleReport } from "../fixtures/sample-report";
 
 describe("shared audit contract", () => {

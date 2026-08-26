@@ -1,8 +1,10 @@
 import express from "express";
 import type { Express, NextFunction, Request, Response } from "express";
-import { API_ERROR_CODES } from "../../shared/audit-types.js";
-import { enforceUrlPolicy } from "../../shared/url-policy.js";
-import { analyzeRequestSchema } from "../../shared/audit-types.js";
+import {
+  API_ERROR_CODES,
+  analyzeRequestSchema,
+  enforceUrlPolicy,
+} from "@pagepilot/contracts";
 import type { AnalysisOutcome } from "../pipeline.js";
 import { analyzeTarget } from "../pipeline.js";
 

@@ -12,6 +12,7 @@
     "verify:gemini": "node scripts/verify-gemini.mjs"
   },
   "dependencies": {
+    "@pagepilot/contracts": "workspace:*",
     "cheerio": "^1.2.0",
     "express": "^5.2.1",
     "ipaddr.js": "^2.5.0",

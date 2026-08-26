@@ -49,10 +49,10 @@ The PagePilot core landing-page audit MVP is **fully implemented, tested, and ve
 
 | Quality Gate | Command | Result | Status |
 |---|---|---|---|
-| **TypeScript Typecheck** | `pnpm run typecheck` / `npm run typecheck` | 0 errors across app, server, and shared tsconfigs | **PASS** |
-| **Unit & Integration Tests** | `pnpm test` / `npm test` | 216 tests passing across 19 test suites | **PASS** |
-| **Production Build** | `pnpm run build` / `npm run build` | Built to `dist/` (JS 288 kB / gzip 85 kB, CSS 21 kB / gzip 5 kB) | **PASS** |
-| **Live Vercel Dev & Gemini Verification** | `pnpm run verify:gemini` | `POST /api/analyze` against `example.com` returns contract-valid report (score 63, 7 categories scored) | **PASS** |
+| **TypeScript Typecheck** | `pnpm run typecheck` / `npm run typecheck` | 0 errors across packages/contracts, app, and server tsconfigs | **PASS** |
+| **Unit & Integration Tests** | `pnpm test` / `npm test` | 232 tests passing across 21 test files (including package tests) | **PASS** |
+| **Production Build** | `pnpm run build` / `npm run build` | Built to `dist/` (JS 288 kB / gzip 85.9 kB, CSS 21.7 kB / gzip 5.0 kB) | **PASS** |
+| **Live Vercel Dev & Gemini Verification** | `pnpm run verify:gemini` | `POST /api/analyze` against `example.com` returns contract-valid report (score 70, 7 categories scored) | **PASS** |
 | **Dependency Security** | `npm audit` | 0 vulnerabilities | **PASS** |
 
 ---
@@ -60,9 +60,11 @@ The PagePilot core landing-page audit MVP is **fully implemented, tested, and ve
 ## 3. Current Architecture & Workspace Status
 
 - **Package Manager:** `pnpm` (v11.10.0, Node v24.14.1) initialized via `packageManager: "pnpm@11.10.0"` in `package.json`.
-- **Workspace Config:** `pnpm-workspace.yaml` initialized targeting `apps/*` and `packages/*`.
-- **Lockfile:** `pnpm-lock.yaml` generated directly from existing dependency graph via `pnpm import`. `package-lock.json` retained during transition.
-- **Current Layout:** Root-level single-package structure preserved (`src/client`, `src/server`, `src/shared`, `api/analyze.ts`). Zero application source code moved or refactored.
+- **Workspace Config:** `pnpm-workspace.yaml` active targeting `apps/*` and `packages/*`.
+- **Packages Extracted:**
+  - `packages/contracts/` (`@pagepilot/contracts`): Shared Zod schemas, TypeScript types, `API_ERROR_CODES`, and `enforceUrlPolicy`. Clean zero-dependency core (except `zod`). Includes package-local tests (`packages/contracts/tests/`).
+- **Lockfile:** `pnpm-lock.yaml` active. `package-lock.json` retained during transition.
+- **Current Layout:** Root-level structure with `@pagepilot/contracts` package (`src/client`, `src/server`, `api/analyze.ts`, `packages/contracts`).
 - **Deployment:** Single Vercel project serving Vite static output (`dist/`) and Express serverless function (`/api/analyze`).
 - **Target Monorepo Architecture:** `apps/web`, `apps/api`, `packages/contracts`, `packages/audit-engine`, `packages/workflows`.
 
@@ -82,4 +84,5 @@ The PagePilot core landing-page audit MVP is **fully implemented, tested, and ve
 - **Completed Tasks:**
   - Task 0.1 — Source-of-Truth Control Plane Alignment (`docs/STATUS.md`, `docs/ROADMAP.md`, `docs/PLAN.md`, `docs/DECISIONS.md` D39)
   - Task 0.2 — pnpm Workspace Initialization & Root Config (`pnpm-workspace.yaml`, `packageManager: pnpm@11.10.0`, `pnpm-lock.yaml`, verified live on `vercel dev`)
-- **Exact Next Task:** **Task 0.3 — Extract `packages/contracts`** (migrate `src/shared/*` to `packages/contracts` with `@pagepilot/contracts` workspace package, update consumers, and verify contract tests).
+  - Task 0.3 — Extract `packages/contracts` (`@pagepilot/contracts` extracted, all consumers updated, legacy `src/shared` removed, fixture data cleanly separated, verified live with Gemini)
+- **Exact Next Task:** **Task 0.4 — Extract `packages/audit-engine`** (extract SSRF fetch, Cheerio extraction, deterministic checks, Gemini structured audit adapter, and scoring into `@pagepilot/audit-engine` without frontend or persistence dependencies).

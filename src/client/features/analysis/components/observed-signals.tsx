@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import type {
   DetectedSignal,
   SignalStatus,
-} from "../../../../shared/audit-types";
+} from "@pagepilot/contracts";
 import { SIGNAL_STATUS_LABELS } from "../labels";
 
 /**

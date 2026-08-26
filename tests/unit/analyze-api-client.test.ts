@@ -4,7 +4,7 @@ import {
   NETWORK_ERROR_CODE,
   analyzeUrl,
 } from "../../src/client/features/analysis/api";
-import { sampleReport } from "../../src/shared/sample-report";
+import { sampleReport } from "../../src/client/features/analysis/sample-report";
 
 afterEach(() => {
   vi.unstubAllGlobals();

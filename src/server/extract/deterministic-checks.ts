@@ -1,4 +1,4 @@
-import type { DetectedSignal } from "../../shared/audit-types.js";
+import type { DetectedSignal } from "@pagepilot/contracts";
 import type { PageSnapshot } from "./page-snapshot.js";
 
 /**

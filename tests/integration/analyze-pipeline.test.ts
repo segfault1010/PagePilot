@@ -4,7 +4,7 @@ import type { Response } from "supertest";
 import {
   analyzeErrorResponseSchema,
   analyzeSuccessResponseSchema,
-} from "../../src/shared/audit-types";
+} from "@pagepilot/contracts";
 import { SafeFetchError } from "../../src/server/fetch/safe-fetch";
 import type { FetchedPage } from "../../src/server/fetch/safe-fetch";
 import type { UxAuditProvider } from "../../src/server/ai/gemini-auditor";

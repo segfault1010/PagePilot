@@ -1,4 +1,4 @@
-import type { Report } from "../../../../shared/audit-types";
+import type { Report } from "@pagepilot/contracts";
 import {
   CONFIDENCE_EXPLANATIONS,
   CONFIDENCE_LABELS,

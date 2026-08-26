@@ -1,4 +1,4 @@
-import type { Report } from "../../../../shared/audit-types";
+import type { Report } from "@pagepilot/contracts";
 import { CategoryGrid } from "./category-grid";
 import { DetailedRecommendations } from "./detailed-recommendations";
 import { ObservedSignals } from "./observed-signals";

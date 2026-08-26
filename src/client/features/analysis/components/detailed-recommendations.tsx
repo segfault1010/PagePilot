@@ -1,4 +1,4 @@
-import type { Recommendation } from "../../../../shared/audit-types";
+import type { Recommendation } from "@pagepilot/contracts";
 import { CATEGORY_LABELS } from "../labels";
 
 /**

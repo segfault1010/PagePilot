@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { Severity } from "../../../../shared/audit-types";
+import type { Severity } from "@pagepilot/contracts";
 
 const TONES = {
   solid: "border-transparent bg-white text-neutral-950",

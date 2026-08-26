@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App, { MIN_ANALYSIS_MS } from "../../src/client/App";
 import { analyzeUrl } from "../../src/client/features/analysis/api";
 import type { AnalyzeResult } from "../../src/client/features/analysis/api";
-import { sampleReport as report } from "../../src/shared/sample-report";
+import { sampleReport as report } from "../../src/client/features/analysis/sample-report";
 
 vi.mock("../../src/client/features/analysis/api", () => ({
   analyzeUrl: vi.fn(),

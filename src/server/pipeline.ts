@@ -6,8 +6,8 @@ import type { UxAuditProvider } from "./ai/gemini-auditor.js";
 import { buildAuditModelInput } from "./ai/audit-input.js";
 import { checkSignalReferences, geminiAuditSchema } from "./schemas/audit.js";
 import { buildReport } from "./scoring/score-report.js";
-import { API_ERROR_CODES } from "../shared/audit-types.js";
-import type { Report } from "../shared/audit-types.js";
+import { API_ERROR_CODES } from "@pagepilot/contracts";
+import type { Report } from "@pagepilot/contracts";
 
 export interface AnalysisSuccess {
   report: Report;

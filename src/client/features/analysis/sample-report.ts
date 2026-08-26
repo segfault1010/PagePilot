@@ -4,7 +4,7 @@ import type {
   Finding,
   Recommendation,
   Report,
-} from "./audit-types.js";
+} from "@pagepilot/contracts";
 
 const ALL_CATEGORIES: AuditCategory[] = [
   "clarity",
@@ -58,8 +58,7 @@ function makeRecommendation(title: string): Recommendation {
 
 /**
  * Contract-valid sample report rendered by the landing page's labeled
- * "Example report" preview and reused by contract/UI tests. The API no
- * longer serves this — Phase 5 replaced it with real server-scored reports.
+ * "Example report" preview.
  */
 export const sampleReport: Report = {
   source: {

@@ -193,3 +193,13 @@ Key architectural and governance decisions:
   - `docs/DECISIONS.md` records immutable architectural, security, persistence, and vendor choices.
 - **Gemini model configuration**: The audit adapter defaults to `gemini-3.6-flash` and supports `gemini-3.7-flash` via `GEMINI_MODEL` with low thinking mode (`thinkingLevel: "low"`) to respect the 30-second serverless execution budget.
 - **Uncompromised security boundary**: SSRF protections, all-records DNS resolution, global-unicast IP filtering (`ipaddr.js`), connection pinning, manual redirect revalidation, and strict Zod model output validation remain non-negotiable across scheduled runs and future integrations.
+
+## D40 — Shared Contracts Extraction (@pagepilot/contracts) (Milestone 0)
+
+Shared Zod schemas, TypeScript types, machine-readable error codes (`API_ERROR_CODES`), and URL policy validation (`enforceUrlPolicy`) were extracted from `src/shared/` into an isolated workspace package: `packages/contracts/` (`@pagepilot/contracts`).
+
+Key architectural decisions:
+- **Clean contract boundary**: `@pagepilot/contracts` contains only runtime-agnostic schemas, domain types, error codes, and pure validation functions. It has zero application or database dependencies and depends only on `zod`.
+- **Fixture separation**: Non-contract fixture data (`sampleReport`) was relocated to `src/client/features/analysis/sample-report.ts` and `tests/fixtures/` to ensure the contracts package contains only schema authority, not application mock state.
+- **Workspace export structure**: Packaged with `"name": "@pagepilot/contracts"`, ESM module format, TypeScript declarations, and workspace linking (`"@pagepilot/contracts": "workspace:*"`) across consumers.
+- **Package-local test suite**: Dedicated contract tests added under `packages/contracts/tests/` verifying schema validation, boundary enforcement, and URL policy correctness independently of root application tests.

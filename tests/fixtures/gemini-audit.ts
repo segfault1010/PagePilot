@@ -1,5 +1,5 @@
-import { AUDIT_CATEGORIES } from "../../src/shared/audit-types";
-import type { AuditCategory } from "../../src/shared/audit-types";
+import { AUDIT_CATEGORIES } from "@pagepilot/contracts";
+import type { AuditCategory } from "@pagepilot/contracts";
 import type { GeminiAudit } from "../../src/server/schemas/audit";
 import type { AuditModelInput } from "../../src/server/ai/audit-input";
 

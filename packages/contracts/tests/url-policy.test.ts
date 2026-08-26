@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { enforceUrlPolicy } from "@pagepilot/contracts";
+import { enforceUrlPolicy } from "../src/index.js";
 
-describe("enforceUrlPolicy", () => {
+describe("@pagepilot/contracts - url policy", () => {
   it("accepts valid https URLs and normalizes them via URL semantics", () => {
     expect(enforceUrlPolicy("https://example.com")).toEqual({
       ok: true,

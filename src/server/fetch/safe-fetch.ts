@@ -1,10 +1,10 @@
-﻿import http from "node:http";
+import http from "node:http";
 import https from "node:https";
 import type { IncomingMessage } from "node:http";
 import type { LookupFunction } from "node:net";
 import type { Readable } from "node:stream";
 import zlib from "node:zlib";
-import { enforceUrlPolicy } from "../../shared/url-policy.js";
+import { enforceUrlPolicy } from "@pagepilot/contracts";
 import { isPubliclyRoutableAddress } from "./ip-policy.js";
 import type { DnsResolver, ResolvedAddress } from "./resolver.js";
 import { defaultDnsResolver } from "./resolver.js";

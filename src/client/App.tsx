@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { ApiError, Report } from "../shared/audit-types";
+import type { ApiError, Report } from "@pagepilot/contracts";
 import { AnalysisLoading } from "./features/analysis/components/analysis-loading";
 import { BrandMark } from "./features/analysis/components/brand-mark";
 import { ErrorState } from "./features/analysis/components/error-state";

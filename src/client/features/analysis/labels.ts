@@ -4,7 +4,7 @@ import type {
   ScoreConfidence,
   Severity,
   SignalStatus,
-} from "../../../shared/audit-types";
+} from "@pagepilot/contracts";
 
 export const CATEGORY_LABELS: Record<AuditCategory, string> = {
   clarity: "Clarity",

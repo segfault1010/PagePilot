@@ -1,4 +1,4 @@
-import { enforceUrlPolicy } from "../../../shared/url-policy";
+import { enforceUrlPolicy } from "@pagepilot/contracts";
 
 export type UrlValidation =
   | { ok: true; url: string }

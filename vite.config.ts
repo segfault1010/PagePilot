@@ -12,6 +12,9 @@ export default defineConfig({
     // machine, and the suite is small enough to run sequentially.
     pool: "threads",
     maxWorkers: 1,
-    include: ["tests/**/*.test.{ts,tsx}"],
+    include: [
+      "tests/**/*.test.{ts,tsx}",
+      "packages/*/tests/**/*.test.{ts,tsx}",
+    ],
   },
 });

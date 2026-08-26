@@ -1,4 +1,4 @@
-import { sampleReport } from "../../../../shared/sample-report";
+import { sampleReport } from "../sample-report";
 import { Badge } from "./badge";
 import { BrandMark } from "./brand-mark";
 import { ReportView } from "./report-view";

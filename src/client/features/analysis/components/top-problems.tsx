@@ -1,4 +1,4 @@
-import type { Finding } from "../../../../shared/audit-types";
+import type { Finding } from "@pagepilot/contracts";
 import { FindingCard } from "./finding-card";
 
 export function TopProblems({ problems }: { problems: Finding[] }) {

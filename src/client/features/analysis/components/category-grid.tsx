@@ -1,4 +1,4 @@
-import type { CategoryReport } from "../../../../shared/audit-types";
+import type { CategoryReport } from "@pagepilot/contracts";
 import { CategoryCard } from "./category-card";
 
 export function CategoryGrid({ categories }: { categories: CategoryReport[] }) {

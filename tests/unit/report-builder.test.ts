@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { buildReport } from "../../src/server/scoring/score-report";
-import { analyzeSuccessResponseSchema } from "../../src/shared/audit-types";
-import { AUDIT_CATEGORIES } from "../../src/shared/audit-types";
-import type { DetectedSignal } from "../../src/shared/audit-types";
+import {
+  analyzeSuccessResponseSchema,
+  AUDIT_CATEGORIES,
+} from "@pagepilot/contracts";
+import type { DetectedSignal } from "@pagepilot/contracts";
 import { auditWith, validGeminiAudit } from "../fixtures/gemini-audit";
 
 const GEMINI_SCORES = [70, 80, 90, 60, 50, 40, 30];

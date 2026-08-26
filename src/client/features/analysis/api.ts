@@ -1,8 +1,8 @@
-import type { ApiError, Report } from "../../../shared/audit-types";
+import type { ApiError, Report } from "@pagepilot/contracts";
 import {
   analyzeErrorResponseSchema,
   analyzeSuccessResponseSchema,
-} from "../../../shared/audit-types";
+} from "@pagepilot/contracts";
 
 export const NETWORK_ERROR_CODE = "NETWORK_ERROR";
 

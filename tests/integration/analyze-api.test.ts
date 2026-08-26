@@ -4,10 +4,10 @@ import type { Response } from "supertest";
 import {
   analyzeErrorResponseSchema,
   analyzeSuccessResponseSchema,
-} from "../../src/shared/audit-types";
+} from "@pagepilot/contracts";
 import type { AnalysisOutcome } from "../../src/server/pipeline";
 import { createApp } from "../../src/server/http/app";
-import { sampleReport } from "../../src/shared/sample-report";
+import { sampleReport } from "../../src/client/features/analysis/sample-report";
 
 function postJson(
   body: unknown,

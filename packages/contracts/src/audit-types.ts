@@ -6,7 +6,7 @@ import { z } from "zod";
  *
  * The client renders from these types; the server validates against these
  * schemas; stricter Gemini-output schemas (Phase 5) build on the same shapes
- * in src/server/schemas/audit.ts.
+ * in packages/audit-engine (or src/server/schemas/audit.ts).
  */
 
 export const AUDIT_CATEGORIES = [

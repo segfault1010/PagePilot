@@ -8,8 +8,8 @@ import {
   scoreAllCategories,
   scoreCategory,
 } from "../../src/server/scoring/score-report";
-import { AUDIT_CATEGORIES } from "../../src/shared/audit-types";
-import type { AuditCategory, DetectedSignal } from "../../src/shared/audit-types";
+import { AUDIT_CATEGORIES } from "@pagepilot/contracts";
+import type { AuditCategory, DetectedSignal } from "@pagepilot/contracts";
 import { validGeminiAudit } from "../fixtures/gemini-audit";
 
 function signal(

@@ -1,7 +1,7 @@
 import {
   AUDIT_CATEGORIES,
   reportSchema,
-} from "../../shared/audit-types.js";
+} from "@pagepilot/contracts";
 import type {
   AuditCategory,
   CategoryReport,
@@ -10,7 +10,7 @@ import type {
   Recommendation,
   Report,
   ScoreConfidence,
-} from "../../shared/audit-types.js";
+} from "@pagepilot/contracts";
 import type { GeminiAudit } from "../schemas/audit.js";
 
 /**

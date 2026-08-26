@@ -1,4 +1,4 @@
-import type { Finding } from "../../../../shared/audit-types";
+import type { Finding } from "@pagepilot/contracts";
 import { BASIS_LABELS, SEVERITY_LABELS } from "../labels";
 import { Badge, SEVERITY_TONE } from "./badge";
 

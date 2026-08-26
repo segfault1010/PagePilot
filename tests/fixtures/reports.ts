@@ -1,14 +1,14 @@
 import {
   AUDIT_CATEGORIES,
   reportSchema,
-} from "../../src/shared/audit-types";
+} from "@pagepilot/contracts";
 import type {
   AuditCategory,
   CategoryReport,
   Finding,
   Recommendation,
   Report,
-} from "../../src/shared/audit-types";
+} from "@pagepilot/contracts";
 
 /**
  * Deterministic contract-valid reports for UI tests:

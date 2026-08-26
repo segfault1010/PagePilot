@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
-import type { ApiError } from "../../../../shared/audit-types";
-import { API_ERROR_CODES } from "../../../../shared/audit-types";
+import type { ApiError } from "@pagepilot/contracts";
+import { API_ERROR_CODES } from "@pagepilot/contracts";
 import { NETWORK_ERROR_CODE } from "../api";
 
 interface ErrorCopy {
