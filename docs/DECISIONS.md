@@ -203,3 +203,21 @@ Key architectural decisions:
 - **Fixture separation**: Non-contract fixture data (`sampleReport`) was relocated to `src/client/features/analysis/sample-report.ts` and `tests/fixtures/` to ensure the contracts package contains only schema authority, not application mock state.
 - **Workspace export structure**: Packaged with `"name": "@pagepilot/contracts"`, ESM module format, TypeScript declarations, and workspace linking (`"@pagepilot/contracts": "workspace:*"`) across consumers.
 - **Package-local test suite**: Dedicated contract tests added under `packages/contracts/tests/` verifying schema validation, boundary enforcement, and URL policy correctness independently of root application tests.
+
+## D41 — Isolated Audit Engine Extraction (@pagepilot/audit-engine) (Milestone 0)
+
+The core landing-page audit engine was extracted from `src/server/` into an independent workspace package: `packages/audit-engine/` (`@pagepilot/audit-engine`).
+
+Key architectural decisions:
+- **Clean pipeline encapsulation**: `@pagepilot/audit-engine` contains the entire safe analysis pipeline:
+  - `src/fetch/`: IP routing policy (`ipaddr.js`), all-records DNS resolver (`dns.lookup`), and SSRF-safe pinned streaming fetcher (`createSafeFetcher`).
+  - `src/extract/`: Bounded HTML Cheerio snapshot extractor (`buildPageSnapshot`) and deterministic signal generator (`runDeterministicChecks`).
+  - `src/ai/`: Bounded model input serializer (`buildAuditModelInput`) and Gemini structured output adapter (`createGeminiAuditor`).
+  - `src/schemas/`: Strict wire and domain audit Zod schemas (`geminiAuditSchema`) and signal-reference integrity checker (`checkSignalReferences`).
+  - `src/scoring/`: Deterministic baseline scoring, 60/40 blending arithmetic, and overall report builder (`scoreReport`).
+  - `src/pipeline.ts`: Pipeline orchestrator function (`analyzeTarget`) coordinating safe fetch, extraction, checks, AI audit, validation, and scoring into an `AnalysisOutcome`.
+- **Pure package boundaries**: `@pagepilot/audit-engine` depends strictly on `@pagepilot/contracts`, `cheerio`, `ipaddr.js`, and `zod`. It has zero Express, HTTP routing, frontend, Supabase, or database persistence dependencies.
+- **Node ESM runtime compatibility**: All internal package imports use explicit `.js` specifiers (`./fetch/safe-fetch.js`, `../schemas/audit.js`, etc.) to guarantee seamless Vercel Node serverless and Node ESM execution.
+- **Server integration**: `src/server/http/app.ts` imports `analyzeTarget` and `AnalysisOutcome` from `@pagepilot/audit-engine`, eliminating duplicate server logic in the root codebase.
+- **Independent test suite**: 9 package-level test suites containing 119 unit and pipeline tests live under `packages/audit-engine/tests/` alongside HTML and Gemini fixtures.
+

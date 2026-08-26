@@ -3,8 +3,8 @@ import {
   AiError,
   DEFAULT_GEMINI_MODEL,
   createGeminiAuditor,
-} from "../../src/server/ai/gemini-auditor";
-import { minimalModelInput, validWireAudit } from "../fixtures/gemini-audit";
+} from "../src/ai/gemini-auditor.js";
+import { minimalModelInput, validWireAudit } from "./fixtures/gemini-audit.js";
 
 function geminiEnvelope(text: unknown): Record<string, unknown> {
   return {
@@ -199,4 +199,3 @@ describe("createGeminiAuditor", () => {
     expect(String(fetchFn.mock.calls[0][0])).toContain(`/${DEFAULT_GEMINI_MODEL}:`);
   });
 });
-

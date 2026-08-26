@@ -7,10 +7,10 @@ import {
   computeReportConfidence,
   scoreAllCategories,
   scoreCategory,
-} from "../../src/server/scoring/score-report";
+} from "../src/scoring/score-report.js";
 import { AUDIT_CATEGORIES } from "@pagepilot/contracts";
 import type { AuditCategory, DetectedSignal } from "@pagepilot/contracts";
-import { validGeminiAudit } from "../fixtures/gemini-audit";
+import { validGeminiAudit } from "./fixtures/gemini-audit.js";
 
 function signal(
   id: string,

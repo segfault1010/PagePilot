@@ -1,12 +1,12 @@
-﻿import { readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   buildPageSnapshot,
   TEXT_EXCERPT_LIMIT,
-} from "../../src/server/extract/page-snapshot";
+} from "../src/extract/page-snapshot.js";
 
-const FIXTURE_DIR = join(import.meta.dirname, "..", "fixtures", "html");
+const FIXTURE_DIR = join(import.meta.dirname, "fixtures", "html");
 
 function loadFixture(name: string): string {
   return readFileSync(join(FIXTURE_DIR, name), "utf8");

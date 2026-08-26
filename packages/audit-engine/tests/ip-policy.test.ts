@@ -1,5 +1,5 @@
-﻿import { describe, expect, it } from "vitest";
-import { isPubliclyRoutableAddress } from "../../src/server/fetch/ip-policy";
+import { describe, expect, it } from "vitest";
+import { isPubliclyRoutableAddress } from "../src/fetch/ip-policy.js";
 
 describe("isPubliclyRoutableAddress", () => {
   it("accepts global unicast IPv4 addresses", () => {

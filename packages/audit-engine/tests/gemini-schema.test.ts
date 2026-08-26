@@ -3,8 +3,8 @@ import {
   checkSignalReferences,
   geminiResponseJsonSchema,
   parseGeminiAuditOutput,
-} from "../../src/server/schemas/audit";
-import { validWireAudit } from "../fixtures/gemini-audit";
+} from "../src/schemas/audit.js";
+import { validWireAudit } from "./fixtures/gemini-audit.js";
 
 type Wire = Record<string, unknown>;
 

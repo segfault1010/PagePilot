@@ -1,6 +1,7 @@
 import { AUDIT_CATEGORIES } from "@pagepilot/contracts";
 import type { AuditCategory } from "@pagepilot/contracts";
-import type { GeminiAudit, AuditModelInput } from "@pagepilot/audit-engine";
+import type { GeminiAudit } from "../../src/schemas/audit.js";
+import type { AuditModelInput } from "../../src/ai/audit-input.js";
 
 /**
  * Contract-valid Gemini audit fixture in its DOMAIN form (findings grouped

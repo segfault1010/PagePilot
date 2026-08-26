@@ -1,12 +1,12 @@
-﻿import { PassThrough } from "node:stream";
+import { PassThrough } from "node:stream";
 import { describe, expect, it, vi } from "vitest";
 import type { IncomingMessage } from "node:http";
 import {
   createSafeFetcher,
   MAX_PAGE_BYTES,
-} from "../../src/server/fetch/safe-fetch";
-import type { OpenStreamFn, FetchedPage } from "../../src/server/fetch/safe-fetch";
-import type { DnsResolver } from "../../src/server/fetch/resolver";
+} from "../src/fetch/safe-fetch.js";
+import type { OpenStreamFn, FetchedPage } from "../src/fetch/safe-fetch.js";
+import type { DnsResolver } from "../src/fetch/resolver.js";
 
 const PUBLIC_IP = { address: "93.184.216.34", family: 4 as const };
 const resolvePublic: DnsResolver = async () => [PUBLIC_IP];
@@ -268,6 +268,7 @@ describe("createSafeFetcher", () => {
       kind: "REQUEST_TOO_LARGE",
     });
   });
+
   it("gives up after three redirects", async () => {
     let requests = 0;
     const fetch = makeFetcher({

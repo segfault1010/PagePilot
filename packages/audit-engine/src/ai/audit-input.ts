@@ -60,7 +60,7 @@ export interface AuditModelInput {
       imagesWithAlt: number;
       visibleTextCharacters: number;
     };
-    headingWarnings: string[];
+    headingWarnings: snapshotHeadingWarnings;
   };
   content: {
     /** Whitespace-normalized visible text, truncated for the model. */
@@ -82,6 +82,8 @@ export interface AuditModelInput {
     evidence: string;
   }[];
 }
+
+type snapshotHeadingWarnings = string[];
 
 function bounded(value: string, limit: number): string {
   return value.length > limit ? value.slice(0, limit) : value;

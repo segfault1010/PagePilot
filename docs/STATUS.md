@@ -49,10 +49,12 @@ The PagePilot core landing-page audit MVP is **fully implemented, tested, and ve
 
 | Quality Gate | Command | Result | Status |
 |---|---|---|---|
-| **TypeScript Typecheck** | `pnpm run typecheck` / `npm run typecheck` | 0 errors across packages/contracts, app, and server tsconfigs | **PASS** |
-| **Unit & Integration Tests** | `pnpm test` / `npm test` | 232 tests passing across 21 test files (including package tests) | **PASS** |
+| **TypeScript Typecheck** | `pnpm run typecheck` / `npm run typecheck` | 0 errors across packages/contracts, packages/audit-engine, app, and server tsconfigs | **PASS** |
+| **Contracts Tests** | `pnpm --filter @pagepilot/contracts test` | 16 tests passing across 2 test files | **PASS** |
+| **Audit Engine Tests** | `pnpm --filter @pagepilot/audit-engine test` | 119 tests passing across 9 test files | **PASS** |
+| **Full Unit & Integration Suite** | `pnpm test` / `npm test` | 224 tests passing across 20 test files | **PASS** |
 | **Production Build** | `pnpm run build` / `npm run build` | Built to `dist/` (JS 288 kB / gzip 85.9 kB, CSS 21.7 kB / gzip 5.0 kB) | **PASS** |
-| **Live Vercel Dev & Gemini Verification** | `pnpm run verify:gemini` | `POST /api/analyze` against `example.com` returns contract-valid report (score 70, 7 categories scored) | **PASS** |
+| **Live Vercel Dev & Gemini Verification** | `pnpm run verify:gemini` | `POST /api/analyze` against `example.com` returns contract-valid report via `@pagepilot/audit-engine` | **PASS** |
 | **Dependency Security** | `npm audit` | 0 vulnerabilities | **PASS** |
 
 ---
@@ -62,9 +64,10 @@ The PagePilot core landing-page audit MVP is **fully implemented, tested, and ve
 - **Package Manager:** `pnpm` (v11.10.0, Node v24.14.1) initialized via `packageManager: "pnpm@11.10.0"` in `package.json`.
 - **Workspace Config:** `pnpm-workspace.yaml` active targeting `apps/*` and `packages/*`.
 - **Packages Extracted:**
-  - `packages/contracts/` (`@pagepilot/contracts`): Shared Zod schemas, TypeScript types, `API_ERROR_CODES`, and `enforceUrlPolicy`. Clean zero-dependency core (except `zod`). Includes package-local tests (`packages/contracts/tests/`).
-- **Lockfile:** `pnpm-lock.yaml` active. `package-lock.json` retained during transition.
-- **Current Layout:** Root-level structure with `@pagepilot/contracts` package (`src/client`, `src/server`, `api/analyze.ts`, `packages/contracts`).
+  - `packages/contracts/` (`@pagepilot/contracts`): Shared Zod schemas, TypeScript types, `API_ERROR_CODES`, and `enforceUrlPolicy`. Zero-dependency core (except `zod`). Includes package-local tests (`packages/contracts/tests/`).
+  - `packages/audit-engine/` (`@pagepilot/audit-engine`): SSRF-safe fetch, Cheerio snapshot extraction, deterministic checks, bounded Gemini model input serialization, structured output adapter, schema validation, signal reference verification, and server-side scoring. Zero UI/persistence dependencies. Includes package-local tests (`packages/audit-engine/tests/`).
+- **Lockfile:** `pnpm-lock.yaml` active.
+- **Current Layout:** Root-level structure with `@pagepilot/contracts` and `@pagepilot/audit-engine` packages (`src/client`, `src/server/http`, `api/analyze.ts`, `packages/contracts`, `packages/audit-engine`).
 - **Deployment:** Single Vercel project serving Vite static output (`dist/`) and Express serverless function (`/api/analyze`).
 - **Target Monorepo Architecture:** `apps/web`, `apps/api`, `packages/contracts`, `packages/audit-engine`, `packages/workflows`.
 
@@ -85,4 +88,5 @@ The PagePilot core landing-page audit MVP is **fully implemented, tested, and ve
   - Task 0.1 — Source-of-Truth Control Plane Alignment (`docs/STATUS.md`, `docs/ROADMAP.md`, `docs/PLAN.md`, `docs/DECISIONS.md` D39)
   - Task 0.2 — pnpm Workspace Initialization & Root Config (`pnpm-workspace.yaml`, `packageManager: pnpm@11.10.0`, `pnpm-lock.yaml`, verified live on `vercel dev`)
   - Task 0.3 — Extract `packages/contracts` (`@pagepilot/contracts` extracted, all consumers updated, legacy `src/shared` removed, fixture data cleanly separated, verified live with Gemini)
-- **Exact Next Task:** **Task 0.4 — Extract `packages/audit-engine`** (extract SSRF fetch, Cheerio extraction, deterministic checks, Gemini structured audit adapter, and scoring into `@pagepilot/audit-engine` without frontend or persistence dependencies).
+  - Task 0.4 — Extract `packages/audit-engine` (`@pagepilot/audit-engine` extracted, SSRF fetch, extraction, checks, AI audit, scoring isolated with zero UI/database coupling, root server updated, duplicate server files removed, 119 package tests + 224 total tests verified passing, verified live with real Gemini)
+- **Exact Next Task:** **Task 0.5 — Monorepo App Migration (apps/web & apps/api)** (move client frontend to `apps/web` and Express/Vercel server to `apps/api` while preserving Vercel deployment parity).

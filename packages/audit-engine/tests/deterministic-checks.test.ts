@@ -4,10 +4,10 @@ import { describe, expect, it } from "vitest";
 import {
   runDeterministicChecks,
   SIGNAL_IDS,
-} from "../../src/server/extract/deterministic-checks";
-import { buildPageSnapshot } from "../../src/server/extract/page-snapshot";
+} from "../src/extract/deterministic-checks.js";
+import { buildPageSnapshot } from "../src/extract/page-snapshot.js";
 
-const FIXTURE_DIR = join(import.meta.dirname, "..", "fixtures", "html");
+const FIXTURE_DIR = join(import.meta.dirname, "fixtures", "html");
 
 function checksFor(name: string) {
   const html = readFileSync(join(FIXTURE_DIR, name), "utf8");

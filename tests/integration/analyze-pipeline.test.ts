@@ -5,13 +5,17 @@ import {
   analyzeErrorResponseSchema,
   analyzeSuccessResponseSchema,
 } from "@pagepilot/contracts";
-import { SafeFetchError } from "../../src/server/fetch/safe-fetch";
-import type { FetchedPage } from "../../src/server/fetch/safe-fetch";
-import type { UxAuditProvider } from "../../src/server/ai/gemini-auditor";
-import { AiError } from "../../src/server/ai/gemini-auditor";
-import type { AuditModelInput } from "../../src/server/ai/audit-input";
-import type { GeminiAudit } from "../../src/server/schemas/audit";
-import { analyzeTarget } from "../../src/server/pipeline";
+import {
+  SafeFetchError,
+  AiError,
+  analyzeTarget,
+} from "@pagepilot/audit-engine";
+import type {
+  FetchedPage,
+  UxAuditProvider,
+  AuditModelInput,
+  GeminiAudit,
+} from "@pagepilot/audit-engine";
 import { createApp } from "../../src/server/http/app";
 import { validGeminiAudit } from "../fixtures/gemini-audit";
 
@@ -23,8 +27,8 @@ import { validGeminiAudit } from "../fixtures/gemini-audit";
  * for real.
  */
 
-vi.mock("../../src/server/fetch/safe-fetch", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../src/server/fetch/safe-fetch")>();
+vi.mock("../../packages/audit-engine/src/fetch/safe-fetch.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../packages/audit-engine/src/fetch/safe-fetch.js")>();
   return {
     ...actual,
     createSafeFetcher: vi.fn(),
@@ -32,7 +36,7 @@ vi.mock("../../src/server/fetch/safe-fetch", async (importOriginal) => {
 });
 
 const mockedCreateSafeFetcher = vi.mocked(
-  (await import("../../src/server/fetch/safe-fetch")).createSafeFetcher,
+  (await import("../../packages/audit-engine/src/fetch/safe-fetch.js")).createSafeFetcher,
 );
 
 const PAGE_HTML = `<!doctype html>

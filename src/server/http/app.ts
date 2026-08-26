@@ -5,8 +5,8 @@ import {
   analyzeRequestSchema,
   enforceUrlPolicy,
 } from "@pagepilot/contracts";
-import type { AnalysisOutcome } from "../pipeline.js";
-import { analyzeTarget } from "../pipeline.js";
+import type { AnalysisOutcome } from "@pagepilot/audit-engine";
+import { analyzeTarget } from "@pagepilot/audit-engine";
 
 // Matches the planned 4 KB JSON request limit.
 const MAX_JSON_BODY_BYTES = "4kb";

@@ -5,7 +5,7 @@ import {
   analyzeErrorResponseSchema,
   analyzeSuccessResponseSchema,
 } from "@pagepilot/contracts";
-import type { AnalysisOutcome } from "../../src/server/pipeline";
+import type { AnalysisOutcome } from "@pagepilot/audit-engine";
 import { createApp } from "../../src/server/http/app";
 import { sampleReport } from "../../src/client/features/analysis/sample-report";
 

@@ -1,4 +1,4 @@
-﻿import * as cheerio from "cheerio";
+import * as cheerio from "cheerio";
 import type { CheerioAPI } from "cheerio";
 
 export const TEXT_EXCERPT_LIMIT = 12_000;
