@@ -179,6 +179,17 @@ Pre-deploy review confirmed: real Phase 5 pipeline (not sample-report) serves `P
 
 Phase 8 is deployment/polish only. No stretch features added: no Playwright, screenshots, Lighthouse, PDF export, sharing/history, auth, database, analytics, payments, notifications. `docs/PLAN.md` remains the source of truth; README now documents setup, `vercel dev`, env vars, testing, deployment, security boundary, and limitations (static HTML only, AI-led vs blended scoring). The MVP acceptance criterion is a deployed URL that analyzes a safe public page and returns a schema-valid report while unsafe destinations remain safely handled.
 
+## D39 — Post-MVP Monorepo and Documentation Control Plane (Milestone 0)
 
+Following completion and production verification of the single-project MVP (D1–D38), PagePilot is evolving to continuous landing-page UX intelligence for growth teams.
 
-
+Key architectural and governance decisions:
+- **Preserve working MVP**: The existing single-project MVP remains fully operational, deployed, and verified with 216 passing tests. It must not be broken or casually rewritten.
+- **Incremental workspace migration**: Target architecture moves to a pnpm workspace (`apps/web`, `apps/api`, `packages/contracts`, `packages/audit-engine`, `packages/workflows`) through isolated verification gates (contracts → audit-engine → web/api) to eliminate deployment risks.
+- **Living document control plane**:
+  - `docs/STATUS.md` is the ground-truth ledger of verified behavior, test results, active milestone, and exact next task.
+  - `docs/ROADMAP.md` tracks milestone progression (`planned|active|complete|deferred`), scope boundaries, and acceptance criteria.
+  - `docs/PLAN.md` defines product vision, architecture specifications, and data models.
+  - `docs/DECISIONS.md` records immutable architectural, security, persistence, and vendor choices.
+- **Gemini model configuration**: The audit adapter defaults to `gemini-3.6-flash` and supports `gemini-3.7-flash` via `GEMINI_MODEL` with low thinking mode (`thinkingLevel: "low"`) to respect the 30-second serverless execution budget.
+- **Uncompromised security boundary**: SSRF protections, all-records DNS resolution, global-unicast IP filtering (`ipaddr.js`), connection pinning, manual redirect revalidation, and strict Zod model output validation remain non-negotiable across scheduled runs and future integrations.

@@ -60,7 +60,7 @@ cp .env.example .env   # fill GEMINI_API_KEY
 
 ```
 GEMINI_API_KEY=        # required from Phase 5; 503 MISSING_CONFIGURATION when absent
-GEMINI_MODEL=          # optional, defaults to gemini-3.6-flash
+GEMINI_MODEL=          # optional, defaults to gemini-3.6-flash; supports gemini-3.7-flash
 ```
 
 `.env` is gitignored. Never commit real keys. Never prefix with `VITE_`.
@@ -72,7 +72,7 @@ GEMINI_MODEL=          # optional, defaults to gemini-3.6-flash
 | Variable | Scope | Notes |
 |---|---|---|
 | `GEMINI_API_KEY` | server-only | Required. Missing → 503. Read only in `src/server/ai/gemini-auditor.ts`. |
-| `GEMINI_MODEL` | server-only | Optional override. Defaults to `gemini-3.6-flash` (thinkingLevel low). Must support `responseJsonSchema`. |
+| `GEMINI_MODEL` | server-only | Optional override. Defaults to `gemini-3.6-flash`; supports `gemini-3.7-flash` (thinkingLevel low). Must support `responseJsonSchema`. |
 
 **Production:** set both as server-side Environment Variables in Vercel Dashboard (Project → Settings → Environment Variables). Do not expose via `VITE_*`.
 
