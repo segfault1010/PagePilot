@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeAndValidateUrl } from "../../src/client/features/analysis/url-validation";
+import { normalizeAndValidateUrl } from "../src/features/analysis/url-validation";
 
 describe("normalizeAndValidateUrl", () => {
   it("accepts and normalizes https URLs", () => {

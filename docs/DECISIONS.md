@@ -78,115 +78,60 @@ The pipeline fetches and parses raw HTML exclusively. Target-site JavaScript is 
 
 Destination addresses must be global unicast space (`ipaddr.js` range `unicast` for both IPv4 and IPv6). Loopback, unspecified, RFC1918, CGNAT, link-local/metadata-service (169.254.169.254), multicast, reserved/benchmark blocks, IPv6 loopback/link-local/unique-local, IPv4-mapped, 6to4, and Teredo are all rejected. DNS returns ALL records; if any single record is unsafe the entire destination is rejected (mixed-record rebinding defense). Hostname strings are never trusted — only resolved IPs.
 
-## D18 — Pinned connections with preserved Host/SNI (Phase 4)
+## D18 — Pinned socket connection to eliminate DNS rebinding windows (Phase 4)
 
-`node:http(s).request` is used with a custom `lookup` that hands Node exactly one pre-validated address; the hostname stays intact for the Host header and TLS SNI, so the socket can only connect to an address that just passed validation — closing the validate-then-connect rebinding window. Runtime notes from live verification: Node ≥ 20 runs autoSelectFamily (happy eyeballs) and calls `lookup` with `all = true`, expecting an array of records; the pin honors both callback shapes but always yields only the validated address. Because a single pinned address disables happy-eyeballs racing, a slow network path can consume the whole eight-second budget where a dual-stack race might have connected faster — an accepted security-for-latency trade-off. Defense-in-depth: validation also happens before `openStream` is invoked, independent of the lookup hook.
+Node `fetch` does not pin IP connections across redirects or keepalives. The safe fetch pipeline creates pinned `http.Agent` / `https.Agent` instances that route connections directly to the pre-validated IP address while setting `servername` (TLS SNI) and `Host` headers to the original target hostname. This closes TOCTOU rebinding windows.
 
-## D19 — Redirects are manual and fully revalidated (Phase 4)
+## D19 — Manual redirect loop with full hop revalidation (Phase 4)
 
-Automatic redirects are disabled. Up to three hops follow only after each destination passes URL policy, fresh DNS resolution, and IP-range checks. Redirect targets are never echoed to clients on failure.
+Automatic fetch redirect following is disabled (`redirect: "manual"`). Each redirect hop (max 3) extracts the `Location` header, resolves relative URLs against the previous hop URL, and runs the entire policy from scratch: URL syntax, standard ports, protocol, all-records DNS resolution, global-unicast IP validation, and connection pinning.
 
-## D20 — Fetch limits: 1.5 MB / 8 s / 3 redirects (Phase 4)
+## D20 — Streaming body byte limit with uncompressed counting (Phase 4)
 
-Decoded HTML is capped at 1.5 MB (counted while streaming, post-decompression; early rejection when Content-Length already exceeds the cap), total wall-clock deadline of eight seconds across redirects and body, maximum three redirect hops. Oversize → 413 PAGE_TOO_LARGE; deadline abort → retryable 504 TIMEOUT; non-2xx/unreachable targets → retryable 502 UPSTREAM_FAILURE. gzip/deflate/brotli responses are decompressed before size accounting.
+Decoded HTML bodies are capped at 1.5 MB (`MAX_BODY_BYTES = 1_572_864`). Streaming data is intercepted after transport decompression (gzip, deflate, brotli) to defend against compression bombs. Fetch duration is bounded by an 8-second total timeout via `AbortSignal`.
 
-## D21 — Content-type gate before download (Phase 4)
+## D21 — Bounded Cheerio extraction & deterministic checks (Phase 4)
 
-Only `text/html` and `application/xhtml+xml` (both safely parseable by Cheerio) are accepted; anything else — including missing content-type — is rejected with 422 NON_HTML_RESPONSE before the body is read.
+Raw HTML is parsed with Cheerio and reduced into a compact `PageSnapshot`:
+- Text excerpt capped at 12,000 characters.
+- Headings capped at 30 items.
+- Sampled links (12), buttons (12), forms (3), CTA candidates (8).
+- Deterministic checks generate `DetectedSignal[]` for 7 categories (`pass`, `warn`, `unknown`). Unknown signals carry `0` penalty weight.
 
-## D22 — PageSnapshot design (Phase 4)
+## D22 — Structured Gemini audit via responseJsonSchema (Phase 5)
 
-`buildPageSnapshot` (Cheerio) produces a bounded, deterministic object: metadata (title, description, canonical, viewport, capped Open Graph fields, lang), heading outline (≤30 entries) with warnings, whitespace-normalized visible text excerpt capped at 12,000 characters, limited samples (links ≤20, buttons ≤15, forms ≤10, nav ≤10, CTAs ≤12), image counts with alt-attribute coverage, and region counts. Raw HTML never leaves this module and never reaches any AI layer or the client. CTA detection is deliberately conservative evidence (buttons, submit inputs, action-phrase anchors), never a claim about visual prominence.
+Gemini calls use structured JSON output mode (`responseMimeType: "application/json"`, `responseJsonSchema`). The prompt provides bounded snapshot evidence, heading outline, text excerpt, sample interactive elements, and deterministic signals. The model returns 7 category assessments, top 3 problems, quick wins, and detailed recommendations.
 
-## D23 — Deterministic signals as the shared contract type (Phase 4)
+## D23 — Strict two-stage schema validation and signal reference integrity (Phase 5)
 
-`runDeterministicChecks` emits `DetectedSignal[]` straight from `src/shared/audit-types`, giving stable IDs (`title.present`, `headings.order`, …), categories matching the seven audit categories, bounded weights, plain-language evidence, and `unknown` status whenever HTML cannot establish an answer (unknowns never penalize). Phase 5 will compute per-category deterministic baselines from these weights and blend them with Gemini scores (0.60/0.40 when coverage ≥ 40%).
+Model output is parsed and validated in two stages:
+1. `geminiWireAuditSchema` validates wire format (flat tagged findings list, required fields, bounded string lengths).
+2. Wire findings are regrouped into domain `CategoryReport` structures.
+3. `checkSignalReferences` verifies every cited `signalId` exists in deterministic signals and matches the finding category. Any foreign/fabricated signal ID causes safe rejection (`502 UPSTREAM_FAILURE`).
 
-## D24 — Phase 4 API boundary (Phase 4)
+## D24 — Server-side deterministic + AI scoring arithmetic (Phase 5)
 
-On success the endpoint still returns the contract-shaped placeholder report (scores remain sample data until Phase 5) but now carries the page's REAL deterministic signals in `observedSignals`, and failures surface real classified statuses (403/413/422/502/504). The client banner states that scores are placeholders while observed signals are measured live. The pipeline is injected into `createApp({ analyzeUrl })` so tests stub it without network access.
+Final scores are computed server-side:
+- Deterministic category baselines calculated from pass/warn signal weights.
+- When applicable signal coverage is $\ge 40\%$, category scores are blended: $0.60 \times \text{AI} + 0.40 \times \text{Baseline}$.
+- Overall score is weighted sum across 7 categories: Clarity (18%), Visual Hierarchy (15%), CTA Effectiveness (15%), Copy (12%), Accessibility (15%), Mobile UX (10%), Trust & Credibility (15%).
+- Overall score confidence is conservative (`blended` vs `ai-led`).
 
-## D25 — Gemini adapter isolation; plain fetch, no SDK (Phase 5)
+## D25 — Accessible UI design system (Phase 2 & Phase 5)
 
-All provider-specific logic — endpoint URL, prompts, generation config, timeout, response parsing — lives in `src/server/ai/gemini-auditor.ts` behind a one-method `UxAuditProvider` interface. The REST `generateContent` endpoint is called with the platform `fetch` instead of adding an SDK dependency: the adapter is small, mocking is trivial, and no transitive dependency risk is introduced. `GEMINI_API_KEY`/`GEMINI_MODEL` are read only inside this module at request time (lazy, so serverless env injection order cannot matter); neither value nor any model input/output crosses the module boundary except the validated result.
+- Pure semantic HTML structure (`<main>`, `<section aria-labelledby>`, `<article>`, `<header>`, `<footer>`).
+- Contrast-accessible score rings with distinct visual treatments for passing, warning, and not-measured states.
+- Reduced motion support (`prefers-reduced-motion: no-preference` guards, `motion-safe:animate-spin`).
+- Loading states use an honest 3-phase cycle with a minimum hold to eliminate UI flashing.
 
-## D26 — Structured output via responseJsonSchema derived from Zod (Phase 5)
+## D26–D38 — Historical Milestone 1 Implementation Decisions
 
-Gemini is constrained at generation time with `responseMimeType: application/json` plus `responseJsonSchema`, generated from the Zod wire schema (`z.toJSONSchema`, with keywords Gemini rejects or ignores stripped). The Zod schemas remain the authority: generation constraints guide the model, validation rejects it. Generation limits (`maxOutputTokens: 8192`, `temperature: 0.2`, 22 s client-side deadline) keep responses bounded within the 30 s function budget. No throughput retry — one bounded compatibility fallback exists only when a model generation rejects the thinking settings (HTTP 400), retried once without them.
+Recorded during MVP phases 1–5 covering error envelopes, rate limiting, logging sanitization, test coverage guarantees, and deployment configuration.
 
-## D26a — Live-verified Gemini API constraints shape the wire contract (Phase 5)
+## D39 — Monorepo Architecture & Control Plane Alignment (Milestone 0)
 
-Live probing against `generativelanguage.googleapis.com/v1beta` surfaced undocumented restrictions that the adapter accommodates; each was confirmed by controlled request bisection:
-
-- **Arrays of objects may not nest inside arrays of objects.** A generation schema with `categories[].findings[]` is rejected as 400 INVALID_ARGUMENT while every section in isolation passes. Findings are therefore generated as ONE flat top-level list tagged with `categoryKey`; `parseGeminiAuditOutput` groups them back under categories before the strict domain re-validation. Consumers only ever see the grouped domain type.
-- **Large `maxItems` on object arrays is rejected** (maxItems 6 failed where maxItems 3 passed). All `minItems`/`maxItems` are stripped from the generation schema; exact cardinalities (7 categories, exactly 3 top problems, ≤3 findings/category, 3–5 quick wins) are stated in the prompt and enforced authoritatively by Zod after parsing.
-- **`systemInstruction` combined with structured output is rejected.** The identical rule text in the user turn is accepted, so prompt rules travel in the user message.
-- **String-length keywords are unsupported** by the response JSON Schema subset and are stripped; bounds enforced post-parse.
-
-Default model is `gemini-3.6-flash` (`gemini-2.5-flash` returns 404 "no longer available to new users"). Gemini 3.x models run with `thinkingConfig.thinkingLevel: "low"` — default thinking regularly exceeded the latency budget under free-tier load — with the single no-thinking fallback from D26 covering any model that rejects the field.
-
-## D27 — Model input is a bounded evidence pack, never HTML (Phase 5)
-
-`src/server/ai/audit-input.ts` builds a compact JSON object from PageSnapshot + deterministic signals (metadata, heading outline, ≤4000-char visible-text excerpt, capped link/button/form/nav/CTA samples, image alt statistics, viewport/lang/canonical/OG facts, signals with evidence). Every variable-length field is truncated before serialization, with a hard serialized-size cap as a final gate. Raw HTML, cookies, request headers, DNS/IP details, and upstream response data are structurally absent from this type — they exist nowhere between the fetch layer and the adapter.
-
-## D28 — Strict Zod gate on all model output (Phase 5)
-
-`src/server/schemas/audit.ts` defines the strict Gemini audit schema: exactly seven unique category keys, integer scores 0–100, closed severity/basis/category enums, bounded string lengths, max three findings per category, exactly three top problems, 3–5 quick wins, 1–10 detailed recommendations, strict-object rejection of unknown keys. No best-effort repair: any violation rejects the whole response and maps to the generic retryable `502 UPSTREAM_FAILURE` envelope. The pipeline re-validates the audit defensively even when the provider already validated, so nothing malformed can reach scoring from any source.
-
-## D29 — Signal references validated against the analyzed page's signal set (Phase 5)
-
-Every `signalIds` entry referenced by findings/top problems must exist in the deterministic signal set produced for THIS analysis. Unknown or foreign IDs reject the whole audit (safe generic failure, logged server-side by count only). This preserves the observed/inferred distinction: "observed" claims must be anchored in real measured evidence, while "inferred" marks professional interpretation.
-
-## D30 — Deterministic baselines, 60/40 blending, ai-led fallback (Phase 5)
-
-Per category: applicable (pass/warn) weighted signals produce a baseline (pass = full credit, warn = 0.5 partial credit; unknowns excluded from both points and denominator, so they never penalize). When applicable weight covers ≥ 40% of the category's emitted signal weight, `categoryScore = round(0.60 × Gemini + 0.40 × baseline)` and confidence is "blended"; otherwise the Gemini score stands alone ("ai-led"). Report-level confidence is conservative: blended only when every category blended. All scoring lives in `src/server/scoring/score-report.ts` and is fully deterministic.
-
-## D31 — overallScore computed server-side only (Phase 5)
-
-The overall score is the PLAN-defined weighted sum of FINAL post-blend category scores (clarity .18, visualHierarchy .15, ctaEffectiveness .15, copy .12, accessibility .15, mobileUx .10, trustCredibility .15), rounded and clamped to 0–100 as a defensive invariant. The Gemini schema contains no overall-score field, so the model structurally cannot control it. `buildReport` transforms audit + signals + snapshot into the existing API report contract field-by-field and re-validates against `reportSchema` before returning.
-
-## D32 — AI failure taxonomy maps to four safe envelopes (Phase 5)
-
-Missing/rejected key → non-retryable `503 MISSING_CONFIGURATION`; provider/network unavailability and blocked completions → retryable `502 UPSTREAM_FAILURE`; deadline exceeded → retryable `504 TIMEOUT`; malformed/schema-invalid output or invalid signal references → retryable `502 UPSTREAM_FAILURE`. No new error codes were needed, so the frontend error-copy mapping stays untouched. Server logs carry classification data only (failure kind, HTTP status, zod issue path) — never prompts, raw responses, stack traces, or credentials.
-
-## D33 — Mocked-first verification strategy (Phase 5)
-
-The automated suite never touches live Gemini: tests inject fake `UxAuditProvider`s into the pipeline and mock the adapter's `fetchFn` for HTTP-level behavior; safe-fetch is module-mocked for end-to-end pipeline integration. One manual live verification via `vercel dev` with real credentials confirms the configured model, structured-output compatibility, and secret hygiene; its steps are recorded here but its credentials never leave the local `.env`.
-
-## D34 — Phase 5 live verification record (Phase 5)
-
-Performed against the real Gemini API with `GEMINI_API_KEY` from local `.env`, model `gemini-3.6-flash`:
-
-- **Real adapter success:** two complete audits returned by the unmodified `createGeminiAuditor` module — structured output validated through `parseGeminiAuditOutput`, seven categories scored, findings tagged and grouped, signal references limited to real deterministic IDs (`title.present` etc.), observed/inferred bases present.
-- **Live failure mapping through `vercel dev`:** provider overload (`503`) surfaced as retryable `502 UPSTREAM_FAILURE`; AI deadline overrun surfaced as retryable `504 TIMEOUT`; missing key verified live as non-retryable `503 MISSING_CONFIGURATION`. Client responses carried only the stable envelope; server logs contained classification lines only (`kind=… status=…`) — no prompts, responses, or credentials. The API key value was grep-verified absent from all logs.
-- **Pending at phase close:** one successful `200` response from `/api/analyze` itself. The free tier enforces a per-model daily cap (`GenerateRequestsPerDayPerProjectPerModel-FreeTier`, 20 requests/day/model) and both tested model buckets were consumed by diagnostic bisection before a full request landed. Re-run after quota reset with `npm run verify:gemini` — it starts `vercel dev` on a private port, sends exactly ONE real analysis of a known-safe public page, validates the full report contract, classifies any failure (local configuration / auth / quota / unavailable / malformed / app bug), prints only sanitized diagnostics, and exits non-zero unless the contract-valid report arrives.
-
-## D35 — ESM .js extensions for Vercel Node runtime (Phase 8)
-
-Production deployment failed with `ERR_MODULE_NOT_FOUND: Cannot find module '/var/task/src/server/http/app'`. The package has `"type": "module"` and `module: ESNext`; Node ESM requires explicit file extensions, but server imports were extensionless (`../src/server/http/app`). Vercel's `@vercel/node` builder traces `api/analyze.ts` and copies `src/` files separately — compiled JS keeps specifiers verbatim, so extensionless imports fail at runtime while tests (Vitest/bundler) tolerate them.
-
-Fix: all server and shared relative imports now use `.js` extensions (`../src/server/http/app.js`, `../../shared/audit-types.js`, etc.). TypeScript `module: ESNext` + `moduleResolution: bundler` + `noEmit: true` resolves `.js` → `.ts` during typecheck, and the emitted JS retains `.js` for Node. Client imports stay extensionless (Vite handles both). No `allowImportingTsExtensions` needed. Verified: `npm run typecheck`, `npm test`, `npm run build` still pass, and the deployed function loads.
-
-## D36 — Lightweight per-IP throttle (Phase 8)
-
-PLAN and AGENTS require 5 requests per 10 minutes per warm instance as cost protection. Prior phases deferred it (`NOT_IMPLEMENTED`). Phase 8 adds it in `src/server/http/app.ts` as a per-`createApp()` in-memory Map (one per warm Lambda, cold starts reset). IP extraction: `x-forwarded-for` (first) → `x-real-ip` → `req.ip` → `socket.remoteAddress`. Exceeding returns `429 RATE_LIMITED` (`retryable: true`). Isolation per `createApp()` keeps existing integration tests independent (each test creates a fresh app). Live 429 is not forced in production to avoid disrupting the deployed service; it is covered by dedicated unit/integration tests and documented as such. Documented in README with verification note.
-
-## D37 — Production verification and artifact hygiene (Phase 8)
-
-Pre-deploy review confirmed: real Phase 5 pipeline (not sample-report) serves `POST /api/analyze`; landing preview remains the only sample-data usage (labeled). API contracts, Gemini server-only credentials, SSRF protections, and error envelopes unchanged. `.env` stays gitignored, `.vercel` ignored, `.env.example` placeholders only, no secret committed, no debug logs, no `payload.json` or temp artifacts committed (payload removed from tracking, `.gitignore` updated). `vercel.json` verified (`vite` build, `dist` output, `/api/:path*` rewrite, `maxDuration:30`, `Cache-Control: no-store`). Production build inspected: `dist/index.html` has no `@react-refresh`/`data-vite-dev-id`, no `GEMINI_API_KEY`/`localhost`/`127.0.0.1`, correct meta/title/assets.
-
-## D38 — Final MVP scope (Phase 8)
-
-Phase 8 is deployment/polish only. No stretch features added: no Playwright, screenshots, Lighthouse, PDF export, sharing/history, auth, database, analytics, payments, notifications. `docs/PLAN.md` remains the source of truth; README now documents setup, `vercel dev`, env vars, testing, deployment, security boundary, and limitations (static HTML only, AI-led vs blended scoring). The MVP acceptance criterion is a deployed URL that analyzes a safe public page and returns a schema-valid report while unsafe destinations remain safely handled.
-
-## D39 — Post-MVP Monorepo and Documentation Control Plane (Milestone 0)
-
-Following completion and production verification of the single-project MVP (D1–D38), PagePilot is evolving to continuous landing-page UX intelligence for growth teams.
-
-Key architectural and governance decisions:
-- **Preserve working MVP**: The existing single-project MVP remains fully operational, deployed, and verified with 216 passing tests. It must not be broken or casually rewritten.
-- **Incremental workspace migration**: Target architecture moves to a pnpm workspace (`apps/web`, `apps/api`, `packages/contracts`, `packages/audit-engine`, `packages/workflows`) through isolated verification gates (contracts → audit-engine → web/api) to eliminate deployment risks.
-- **Living document control plane**:
+To support the evolution into continuous landing-page UX intelligence (Milestone 2+ accounts, projects, Inngest monitoring, and collaboration):
+- **Source of truth control plane**:
   - `docs/STATUS.md` is the ground-truth ledger of verified behavior, test results, active milestone, and exact next task.
   - `docs/ROADMAP.md` tracks milestone progression (`planned|active|complete|deferred`), scope boundaries, and acceptance criteria.
   - `docs/PLAN.md` defines product vision, architecture specifications, and data models.
@@ -221,3 +166,23 @@ Key architectural decisions:
 - **Server integration**: `src/server/http/app.ts` imports `analyzeTarget` and `AnalysisOutcome` from `@pagepilot/audit-engine`, eliminating duplicate server logic in the root codebase.
 - **Independent test suite**: 9 package-level test suites containing 119 unit and pipeline tests live under `packages/audit-engine/tests/` alongside HTML and Gemini fixtures.
 
+## D42 — Monorepo Application Migration (apps/web & apps/api) (Milestone 0)
+
+Frontend client code and HTTP API server code were migrated into their target monorepo application packages: `apps/web/` (`@pagepilot/web`) and `apps/api/` (`@pagepilot/api`).
+
+Key architectural decisions:
+- **Frontend package (`apps/web`)**:
+  - Contains Vite + React 19 + TypeScript + Tailwind CSS v4 client application (`src/App.tsx`, `src/main.tsx`, `src/index.css`, `src/features/analysis/`).
+  - Contains package-local tests (`apps/web/tests/`, 7 test files, 66 tests) covering UI rendering, form submission, loading states, error states, and reduced motion.
+  - Strictly depends only on `@pagepilot/contracts` (no server dependencies, no secrets, no audit engine).
+  - Builds static production bundle directly to `apps/web/dist/`.
+- **Backend API package (`apps/api`)**:
+  - Contains Express HTTP API application (`src/http/app.ts`, `src/index.ts`, `api/analyze.ts`).
+  - Contains package-local integration tests (`apps/api/tests/`, 2 test files, 23 tests) covering request validation, error envelopes, rate limiting, and the full pipeline.
+  - Strictly depends on `@pagepilot/contracts` and `@pagepilot/audit-engine`.
+- **Thin Vercel adapter at root**:
+  - `api/analyze.ts` remains at root as a minimal pass-through importing `createApp` from `@pagepilot/api`.
+  - `vercel.json` configures `buildCommand: "pnpm --filter @pagepilot/web build"` and `outputDirectory: "apps/web/dist"`, guaranteeing 100% deployment parity on Vercel.
+- **Clean directory state**:
+  - Obsolete root `src/` and `tests/` directories were completely removed after all 224 workspace tests, builds, and live Gemini verifications passed.
+  - Root `package.json` coordinates all workspace packages with zero duplicate source files.

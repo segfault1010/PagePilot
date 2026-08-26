@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AnalysisLoading } from "../../src/client/features/analysis/components/analysis-loading";
+import { AnalysisLoading } from "../src/features/analysis/components/analysis-loading";
 
 const PHASE_MS = 900;
 

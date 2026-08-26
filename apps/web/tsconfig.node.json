@@ -19,5 +19,5 @@
     "erasableSyntaxOnly": true,
     "skipLibCheck": true
   },
-  "include": ["api", "vite.config.ts"]
+  "include": ["tests", "vite.config.ts"]
 }

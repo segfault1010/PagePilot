@@ -8,9 +8,9 @@ This roadmap defines the evolution of PagePilot from a single-project MVP into a
 
 | Milestone | Product Outcome | Status | Key Focus |
 |---|---|---|---|
-| **0. Product Foundation** | Maintainable monorepo base | **Active** | pnpm workspace, shared contracts package, isolated audit engine, docs ledger |
+| **0. Product Foundation** | Maintainable monorepo base | **Complete** | pnpm workspace, shared contracts package, isolated audit engine, apps/web, apps/api, docs ledger |
 | **1. Core Audit MVP** | Trustworthy one-off UX audit | **Complete** | Safe fetch, deterministic checks, Gemini structured audit, report UI |
-| **2. Accounts & Projects** | Saved reports & tenant workspaces | **Planned** | Supabase Auth, organizations, roles, projects, monitored page registry |
+| **2. Accounts & Projects** | Saved reports & tenant workspaces | **Active (Next)** | Supabase Auth, organizations, roles, projects, monitored page registry |
 | **3. Continuous Monitoring** | Automated regression alerts | **Planned** | Inngest weekly workflows, score diffing, email alerts, trend dashboard |
 | **4. Collaboration** | Findings turned into team work | **Planned** | Finding work items (`open`, `resolved`), assignees, notes, read-only share links |
 | **5. Integrations & Measurement** | Growth toolchain connectivity | **Planned** | Slack notifications, webhooks, UTM tracking, analytics context import |
@@ -22,22 +22,21 @@ This roadmap defines the evolution of PagePilot from a single-project MVP into a
 ## Milestone Details
 
 ### Milestone 0: Product Foundation & Monorepo Setup
-- **Status:** `Active`
+- **Status:** `Complete & Verified`
 - **Product Outcome:** A clean, modular monorepo structure that isolates shared contracts, audit logic, workflows, and web/API applications without disrupting the production MVP.
 - **Dependencies:** None.
-- **Must Include:**
-  - `docs/STATUS.md`, `docs/ROADMAP.md`, `docs/DECISIONS.md` control plane.
-  - pnpm workspace (`pnpm-workspace.yaml`).
-  - `packages/contracts`: shared Zod schemas and TypeScript types.
-  - `packages/audit-engine`: isolated safe fetch, Cheerio snapshot, deterministic checks, Gemini adapter, scoring.
-  - `apps/web`: Vite + React + Tailwind frontend application.
-  - `apps/api`: Express API handler on Vercel Node runtime.
-  - Centralized environment variable validation.
-- **Explicitly Defer:** Supabase database, authentication, Inngest durable workflows, Stripe billing.
-- **Acceptance Criteria:**
-  - Workspace compiles under `pnpm run build` and passes strict typechecking.
-  - Full test suite (216+ tests) passes in the monorepo structure.
-  - Vercel build and routing verified locally and in deployment configuration.
+- **Completed Deliverables:**
+  - `docs/STATUS.md`, `docs/ROADMAP.md`, `docs/DECISIONS.md` control plane (D39).
+  - pnpm workspace (`pnpm-workspace.yaml`, `pnpm@11.10.0`).
+  - `packages/contracts`: shared Zod schemas, TypeScript types, `API_ERROR_CODES`, and `enforceUrlPolicy` (D40).
+  - `packages/audit-engine`: isolated safe fetch, Cheerio snapshot, deterministic checks, Gemini adapter, scoring (D41).
+  - `apps/web`: Vite + React + Tailwind frontend application (`@pagepilot/web`) with 66 unit/UI tests (D42).
+  - `apps/api`: Express API handler on Vercel Node runtime (`@pagepilot/api`) with 23 integration tests (D42).
+  - Root thin Vercel adapter (`api/analyze.ts`) with `vercel.json` routing.
+- **Acceptance Criteria Verified:**
+  - Workspace compiles under `pnpm run build` and passes strict typechecking (`pnpm run typecheck`).
+  - Full test suite (224 tests across 20 test files) passes across all packages and apps.
+  - Vercel build and live Gemini verification (`pnpm run verify:gemini`) verified on local dev server.
 
 ---
 
@@ -55,13 +54,13 @@ This roadmap defines the evolution of PagePilot from a single-project MVP into a
   - Lightweight in-memory rate limiting (5 req / 10 min / warm instance).
 - **Explicitly Defer:** Persistence, accounts, screenshots, third-party integrations.
 - **Acceptance Criteria:**
-  - 100% test coverage across URL policy, SSRF, extraction, scoring, schemas, and UI (216 tests passing).
+  - 100% test coverage across URL policy, SSRF, extraction, scoring, schemas, and UI (224 tests passing).
   - Zero raw HTML, secrets, or internal details exposed to client.
 
 ---
 
 ### Milestone 2: Accounts & Projects
-- **Status:** `Planned`
+- **Status:** `Active (Next)`
 - **Product Outcome:** Signed-in growth teams can organize audits into projects, track monitored pages, and retain immutable audit history.
 - **Dependencies:** Milestone 0, Milestone 1.
 - **Must Include:**

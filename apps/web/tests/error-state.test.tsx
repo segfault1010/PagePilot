@@ -2,7 +2,7 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { API_ERROR_CODES } from "@pagepilot/contracts";
-import { ErrorState } from "../../src/client/features/analysis/components/error-state";
+import { ErrorState } from "../src/features/analysis/components/error-state";
 
 const noop = () => {};
 

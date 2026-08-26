@@ -1,12 +1,6 @@
 import { AUDIT_CATEGORIES } from "@pagepilot/contracts";
-import type { AuditCategory } from "@pagepilot/contracts";
 import type { GeminiAudit, AuditModelInput } from "@pagepilot/audit-engine";
 
-/**
- * Contract-valid Gemini audit fixture in its DOMAIN form (findings grouped
- * under categories) and its WIRE form (flat tagged findings list) — the two
- * shapes parseGeminiAuditOutput maps between.
- */
 export function validGeminiAudit(): GeminiAudit {
   return {
     summary:
@@ -90,7 +84,6 @@ export function validGeminiAudit(): GeminiAudit {
   };
 }
 
-/** Wire form of the same audit: flat findings list tagged by categoryKey. */
 export function validWireAudit(): Record<string, unknown> {
   const domain = validGeminiAudit();
   const findings = domain.categories.flatMap((category) =>
@@ -116,24 +109,12 @@ export function validWireAudit(): Record<string, unknown> {
 
 type Mutation = (audit: GeminiAudit) => void;
 
-/** Deep-clones the valid fixture, applies mutations, returns the result. */
 export function auditWith(...mutations: Mutation[]): GeminiAudit {
   const audit = structuredClone(validGeminiAudit()) as GeminiAudit;
   for (const mutate of mutations) mutate(audit);
   return audit;
 }
 
-export function setCategory(
-  key: AuditCategory,
-  patch: Partial<GeminiAudit["categories"][number]>,
-): Mutation {
-  return (audit) => {
-    const index = audit.categories.findIndex((c) => c.key === key);
-    audit.categories[index] = { ...audit.categories[index]!, ...patch };
-  };
-}
-
-/** Deterministic model input matching the fixture's referenced signals. */
 export function minimalModelInput(): AuditModelInput {
   return {
     page: {

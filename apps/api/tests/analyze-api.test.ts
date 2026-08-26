@@ -6,8 +6,8 @@ import {
   analyzeSuccessResponseSchema,
 } from "@pagepilot/contracts";
 import type { AnalysisOutcome } from "@pagepilot/audit-engine";
-import { createApp } from "../../src/server/http/app";
-import { sampleReport } from "../../src/client/features/analysis/sample-report";
+import { createApp } from "../src/http/app.js";
+import { sampleReport } from "./fixtures/reports.js";
 
 function postJson(
   body: unknown,
@@ -22,10 +22,6 @@ function expectEnvelope(res: Response) {
   expect(parsed.success).toBe(true);
   expect(Object.keys(res.body).sort()).toEqual(["error"]);
 }
-
-// ---------------------------------------------------------------------------
-// Request validation (unchanged from Phase 3)
-// ---------------------------------------------------------------------------
 
 describe("POST /api/analyze — request validation", () => {
   it("rejects malformed URLs with 400 INVALID_URL before any analysis", async () => {
@@ -80,10 +76,6 @@ describe("POST /api/analyze — request validation", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Phase 4 pipeline outcomes
-// ---------------------------------------------------------------------------
-
 const SAMPLE_SIGNALS = [
   {
     id: "title.present",
@@ -121,7 +113,6 @@ describe("POST /api/analyze — pipeline outcomes", () => {
       id: "title.present",
       status: "pass",
     });
-    // Scores remain clearly-labeled placeholders until Phase 5.
     expect(typeof res.body.report.overallScore).toBe("number");
   });
 

@@ -16,19 +16,11 @@ import type {
   AuditModelInput,
   GeminiAudit,
 } from "@pagepilot/audit-engine";
-import { createApp } from "../../src/server/http/app";
-import { validGeminiAudit } from "../fixtures/gemini-audit";
+import { createApp } from "../src/http/app.js";
+import { validGeminiAudit } from "./fixtures/gemini-audit.js";
 
-/**
- * End-to-end Phase 5 pipeline tests. The network boundary is the only mock:
- * safe-fetch returns fixture HTML (or classified failures) and Gemini is a
- * fake provider, while snapshot extraction, signal generation, schema
- * validation, signal-reference checks, blending, and report building all run
- * for real.
- */
-
-vi.mock("../../packages/audit-engine/src/fetch/safe-fetch.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../packages/audit-engine/src/fetch/safe-fetch.js")>();
+vi.mock("../../../packages/audit-engine/src/fetch/safe-fetch.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../packages/audit-engine/src/fetch/safe-fetch.js")>();
   return {
     ...actual,
     createSafeFetcher: vi.fn(),
@@ -36,7 +28,7 @@ vi.mock("../../packages/audit-engine/src/fetch/safe-fetch.js", async (importOrig
 });
 
 const mockedCreateSafeFetcher = vi.mocked(
-  (await import("../../packages/audit-engine/src/fetch/safe-fetch.js")).createSafeFetcher,
+  (await import("../../../packages/audit-engine/src/fetch/safe-fetch.js")).createSafeFetcher,
 );
 
 const PAGE_HTML = `<!doctype html>
@@ -111,7 +103,6 @@ describe("POST /api/analyze — full Phase 5 pipeline", () => {
     const report = res.body.report;
     expect(report.source.title).toBe("Acme landing page");
     expect(report.source.finalUrl).toBe("https://acme.example/");
-    // Real deterministic signals, not fixture data.
     expect(
       report.observedSignals.some((signal: { id: string }) => signal.id === "title.present"),
     ).toBe(true);
@@ -119,7 +110,6 @@ describe("POST /api/analyze — full Phase 5 pipeline", () => {
     expect(report.topProblems).toHaveLength(3);
     expect(typeof report.overallScore).toBe("number");
 
-    // The model saw bounded evidence only.
     const input = auditor.calls[0] as AuditModelInput;
     expect(input.page.title).toBe("Acme landing page");
     expect(JSON.stringify(input)).not.toContain("<script");
@@ -209,7 +199,6 @@ describe("POST /api/analyze — full Phase 5 pipeline", () => {
       "summary",
       "topProblems",
     ]);
-    // No raw model envelope artifacts leak into the response.
     expect(JSON.stringify(res.body)).not.toMatch(/finishReason|promptFeedback/);
   });
 
@@ -219,7 +208,7 @@ describe("POST /api/analyze — full Phase 5 pipeline", () => {
       ...validGeminiAudit(),
       summary: `${marker} summary that is definitely long enough to pass bounds.`,
     } satisfies GeminiAudit;
-    delete (rogue as Record<string, unknown>).categories; // schema-invalid → safe failure
+    delete (rogue as Record<string, unknown>).categories;
 
     const res = await postUrl(
       appWith({
@@ -251,8 +240,6 @@ describe("POST /api/analyze — full Phase 5 pipeline", () => {
     const previousKey = process.env.GEMINI_API_KEY;
     delete process.env.GEMINI_API_KEY;
     try {
-      // Real pipeline, real default auditor, mocked fetcher: proves the
-      // missing-key path maps to the safe 503 envelope.
       const app = createApp({ analyzeUrl: (url) => analyzeTarget(url) });
       const res = await request(app).post("/api/analyze").send({ url: "https://acme.example" });
       expect(res.status).toBe(503);
@@ -263,7 +250,6 @@ describe("POST /api/analyze — full Phase 5 pipeline", () => {
   });
 });
 
-/** Response bodies on failure carry exactly the stable error envelope. */
 function expectEnvelopeOnly(res: Response): void {
   const parsed = analyzeErrorResponseSchema.safeParse(res.body);
   expect(parsed.success).toBe(true);

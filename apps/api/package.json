@@ -1,26 +1,24 @@
 {
-  "name": "pagepilot",
+  "name": "@pagepilot/api",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "packageManager": "pnpm@11.10.0",
+  "main": "./src/index.ts",
   "scripts": {
-    "dev": "pnpm --filter @pagepilot/web dev",
-    "build": "pnpm --filter @pagepilot/web build",
     "test": "vitest run",
-    "typecheck": "tsc -b",
-    "verify:gemini": "node scripts/verify-gemini.mjs"
+    "typecheck": "tsc -b"
   },
   "dependencies": {
-    "@pagepilot/api": "workspace:*",
     "@pagepilot/audit-engine": "workspace:*",
     "@pagepilot/contracts": "workspace:*",
-    "@pagepilot/web": "workspace:*"
+    "express": "^5.2.1"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/node": "^26.2.0",
+    "@types/supertest": "^7.2.1",
+    "supertest": "^7.2.2",
     "typescript": "^7.0.2",
-    "vite": "^8.2.2",
     "vitest": "^4.1.11"
   }
 }

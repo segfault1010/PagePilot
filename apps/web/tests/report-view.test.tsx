@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { CategoryCard } from "../../src/client/features/analysis/components/category-card";
-import { ReportView } from "../../src/client/features/analysis/components/report-view";
-import { richReport, sparseReport } from "../fixtures/reports";
+import { CategoryCard } from "../src/features/analysis/components/category-card";
+import { ReportView } from "../src/features/analysis/components/report-view";
+import { richReport, sparseReport } from "./fixtures/reports";
 
 afterEach(() => {
   cleanup();

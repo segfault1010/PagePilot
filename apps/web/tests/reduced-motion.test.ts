@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
  * - the loading spinner is gated behind Tailwind's motion-safe variant;
  * - static components (score ring) introduce no animation of their own.
  */
-const CLIENT_ROOT = join(__dirname, "..", "..", "src", "client");
+const CLIENT_ROOT = join(import.meta.dirname, "..", "src");
 
 function readClientFile(relativePath: string): string {
   return readFileSync(join(CLIENT_ROOT, relativePath), "utf8");

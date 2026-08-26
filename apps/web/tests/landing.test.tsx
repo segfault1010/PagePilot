@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import App, { MIN_ANALYSIS_MS } from "../../src/client/App";
-import { analyzeUrl } from "../../src/client/features/analysis/api";
-import type { AnalyzeResult } from "../../src/client/features/analysis/api";
-import { sampleReport as report } from "../../src/client/features/analysis/sample-report";
+import App, { MIN_ANALYSIS_MS } from "../src/App";
+import { analyzeUrl } from "../src/features/analysis/api";
+import type { AnalyzeResult } from "../src/features/analysis/api";
+import { sampleReport as report } from "../src/features/analysis/sample-report";
 
-vi.mock("../../src/client/features/analysis/api", () => ({
+vi.mock("../src/features/analysis/api", () => ({
   analyzeUrl: vi.fn(),
   NETWORK_ERROR_CODE: "NETWORK_ERROR",
 }));
