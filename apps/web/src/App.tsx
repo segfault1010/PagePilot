@@ -9,6 +9,9 @@ import { analyzeUrl } from "./features/analysis/api";
 import { AuthProvider } from "./features/auth/auth-context";
 import { AuthNav } from "./features/auth/components/auth-nav";
 
+import { useAuth } from "./features/auth/auth-context";
+import { WorkspaceShell } from "./features/workspace/components/workspace-shell";
+
 /**
  * Minimum time the loading view stays up. Fast API responses would
  * otherwise flash the spinner for a few milliseconds; holding briefly is
@@ -27,12 +30,14 @@ type View =
   | { name: "failure"; url: string; error: ApiError };
 
 export function AppContent() {
+  const { user } = useAuth();
+  const [viewMode, setViewMode] = useState<"workspace" | "one-off">("workspace");
   const [view, setView] = useState<View>({ name: "landing" });
   const [draftUrl, setDraftUrl] = useState("");
 
   useEffect(() => {
     window.scrollTo(0, 0);
-  }, [view]);
+  }, [view, viewMode]);
 
   const handleAnalyze = useCallback((url: string) => {
     setDraftUrl(url);
@@ -73,10 +78,24 @@ export function AppContent() {
     };
   }, [view]);
 
+  // If user is authenticated and in workspace mode, render the Workspace Shell
+  if (user && viewMode === "workspace") {
+    return (
+      <WorkspaceShell
+        onSwitchToOneOffAudit={() => setViewMode("one-off")}
+      />
+    );
+  }
+
+  // One-off audit flows (for anonymous visitors or authenticated users in one-off mode)
   if (view.name === "analyzing") {
     return (
       <div className="min-h-screen">
-        <MiniHeader onHome={handleBackToLanding} />
+        <MiniHeader
+          onHome={handleBackToLanding}
+          showWorkspaceBtn={Boolean(user)}
+          onWorkspace={() => setViewMode("workspace")}
+        />
         <AnalysisLoading url={view.url} />
       </div>
     );
@@ -85,7 +104,11 @@ export function AppContent() {
   if (view.name === "report") {
     return (
       <div className="min-h-screen">
-        <MiniHeader onHome={handleBackToLanding} />
+        <MiniHeader
+          onHome={handleBackToLanding}
+          showWorkspaceBtn={Boolean(user)}
+          onWorkspace={() => setViewMode("workspace")}
+        />
         <main className="mx-auto w-full max-w-5xl px-6 pb-20 pt-4 sm:pt-8">
           <h1 className="sr-only">Analysis report</h1>
           {/* Polite completion announcement; failure announces via its
@@ -107,7 +130,11 @@ export function AppContent() {
   if (view.name === "failure") {
     return (
       <div className="min-h-screen">
-        <MiniHeader onHome={handleBackToLanding} />
+        <MiniHeader
+          onHome={handleBackToLanding}
+          showWorkspaceBtn={Boolean(user)}
+          onWorkspace={() => setViewMode("workspace")}
+        />
         <ErrorState
           error={view.error}
           url={view.url}
@@ -118,20 +145,57 @@ export function AppContent() {
     );
   }
 
-  return <Landing initialUrl={draftUrl} onAnalyze={handleAnalyze} />;
+  return (
+    <div className="min-h-screen">
+      {user && (
+        <div className="border-b border-neutral-900 bg-neutral-950 px-6 py-2">
+          <div className="mx-auto flex max-w-5xl items-center justify-between text-xs">
+            <span className="text-neutral-400">One-off audit mode</span>
+            <button
+              type="button"
+              onClick={() => setViewMode("workspace")}
+              className="rounded font-medium text-neutral-300 transition hover:text-white"
+            >
+              &larr; Return to Workspace
+            </button>
+          </div>
+        </div>
+      )}
+      <Landing initialUrl={draftUrl} onAnalyze={handleAnalyze} />
+    </div>
+  );
 }
 
-function MiniHeader({ onHome }: { onHome: () => void }) {
+function MiniHeader({
+  onHome,
+  showWorkspaceBtn = false,
+  onWorkspace,
+}: {
+  onHome: () => void;
+  showWorkspaceBtn?: boolean;
+  onWorkspace?: () => void;
+}) {
   return (
     <header className="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-6">
-      <button
-        type="button"
-        onClick={onHome}
-        aria-label="PagePilot — back to start"
-        className="flex items-center gap-2.5 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
-      >
-        <BrandMark />
-      </button>
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={onHome}
+          aria-label="PagePilot — back to start"
+          className="flex items-center gap-2.5 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+        >
+          <BrandMark />
+        </button>
+        {showWorkspaceBtn && onWorkspace && (
+          <button
+            type="button"
+            onClick={onWorkspace}
+            className="rounded border border-neutral-800 bg-neutral-900 px-2.5 py-1 text-xs font-medium text-neutral-300 transition hover:bg-neutral-800 hover:text-white"
+          >
+            Workspace
+          </button>
+        )}
+      </div>
       <AuthNav />
     </header>
   );

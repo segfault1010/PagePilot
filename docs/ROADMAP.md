@@ -94,8 +94,15 @@ This roadmap defines the evolution of PagePilot from a single-project MVP into a
     - Preserved `latest_successful_audit_run_id` on audit failure while updating `latest_audit_run_id`.
     - Enforced historical report immutability via RLS (no `UPDATE` on reports/snapshots/recommendations).
     - Web client API helpers (`apps/web/src/features/audits/api.ts`) with automatic session token injection.
-  - **Task 2.5 — Workspace UI, Projects & Monitored Page Management (`Next`)**:
-    - Build authenticated project and monitored page dashboard and historical audit view in frontend.
+  - **Task 2.5 — Workspace UI, Projects & Monitored Page Management (`Complete & Verified`)**:
+    - Built accessible, responsive workspace shell (`WorkspaceShell`) supporting project listing, creation, editing, and deletion.
+    - Built project detail view (`ProjectDetail`) for monitored page management (add/edit/delete/toggle active/paused).
+    - Built monitored page detail view (`PageDetail`) displaying latest score, confidence, audit history, and manual audit trigger.
+    - Implemented safe selection persistence: stored IDs in session storage are re-validated through API queries and safely cleared if unauthorized or missing.
+    - Implemented failure preservation banner with "View Last Successful Audit" button when latest audit run failed.
+    - Implemented historical report viewer (`HistoricalReportView`) reusing `ReportView` with frozen version metadata.
+    - Preserved anonymous one-off audit flow unchanged while allowing seamless switching for authenticated users.
+    - Enforced role matrix in UI: viewer (read-only), member (manage pages/audits, restricted from deleting projects), owner/admin (full control).
 - **Must Include:**
   - Supabase Auth (Email / Password / Magic Link).
   - Multi-tenant data model: `organization`, `membership`, `profile`, `project`, `monitored_page`, `audit_run`, `audit_report`.
@@ -113,7 +120,7 @@ This roadmap defines the evolution of PagePilot from a single-project MVP into a
 ---
 
 ### Milestone 3: Continuous Monitoring & Alerts
-- **Status:** `Planned`
+- **Status:** `Next`
 - **Product Outcome:** Teams receive proactive alerts when monitored landing pages experience meaningful UX regressions.
 - **Dependencies:** Milestone 2.
 - **Must Include:**

@@ -177,4 +177,35 @@ To connect the `@pagepilot/audit-engine` analysis pipeline to authenticated, ten
 - **Anonymous MVP Audit Unchanged**:
   - `POST /api/analyze` remains open, unauthenticated, stateless, and verified live with `pnpm run verify:gemini`.
 
+## D47 — Workspace UI, Project/Page Management, Audit History, and Safe Selection Persistence (Milestone 2)
+
+To turn the authenticated persistence and API layer into a cohesive, accessible workspace experience:
+- **Component Hierarchy & Separation**:
+  - Created modular workspace components under `apps/web/src/features/workspace/components/`:
+    - `WorkspaceShell`: orchestrates top-level navigation, project/page selection, view level transitions, and one-off audit switching.
+    - `ProjectList`: displays project cards, metadata, empty states, and role-gated creation/editing/deletion.
+    - `ProjectDetail`: shows project overview, breadcrumbs, monitored page list, status badges, cadence, tags, and page management actions.
+    - `PageDetail`: renders monitored page overview, latest overall score with confidence pills, last audit timestamp, failure preservation banner with "View Last Successful Audit", "Run Audit" action, and paginated audit history table.
+    - `HistoricalReportView`: reuses the verified `ReportView` component (`src/features/analysis/components/report-view.tsx`) wrapped in a historical metadata header (run timestamp, model version, scoring version, and back navigation).
+    - `ProjectModal`: accessible dialog with keyboard `Escape` support, validating project name, domain, timezone, and goals against `@pagepilot/contracts` schemas.
+    - `MonitoredPageModal`: accessible dialog validating landing page URLs via `@pagepilot/contracts` `enforceUrlPolicy` and parsing tags.
+    - `DeleteConfirmModal`: accessible confirmation dialog for destructive project and page deletions.
+- **Safe Selection Persistence & Authorization Re-validation**:
+  - Selected project and page IDs are saved in session storage for navigation convenience across refreshes, but **stored IDs are never treated as authorized**.
+  - On mount or change, selections are re-validated through API queries (`listProjects`, `getProject`, `getMonitoredPage`). If a resource is not found (e.g. user switches accounts or resource was deleted), the stored selection is cleared immediately and the view falls back safely to the project list.
+- **Role-Aware UI Visibility**:
+  - `viewer`: Read-only. Mutation controls ("+ New Project", edit project, delete project, "+ Add Page", edit page, delete page, status toggles, "Run Audit") are hidden or disabled; viewing projects, pages, latest reports, and historical reports is fully supported.
+  - `member`: Full project creation/editing, monitored page management (add/edit/delete/toggle status), and manual audit triggers are enabled; **project deletion is hidden** (matching D45/D46).
+  - `owner` / `admin`: Full project, page, and audit management controls enabled.
+- **Manual Audit Idempotency Key Lifecycle**:
+  - Clicking "Run Audit" generates a client-side idempotency key for that specific action.
+  - If a transient network error occurs, the key is preserved so retries avoid duplicate runs.
+  - On completion or starting a fresh audit, a new idempotency key is generated.
+- **Failed Run Notice & Last Successful Report Access**:
+  - When the latest audit run for a page failed, an alert banner explains the failure reason while confirming that the previous successful report is preserved. A dedicated "View Last Successful Audit" button provides instant access to the valid report evidence.
+- **Anonymous One-Off Audit Flow Preserved**:
+  - Anonymous visitors continue to land on the public one-off auditor (`Landing` $\rightarrow$ `Analyzing` $\rightarrow$ `Report` / `Failure`) with zero friction.
+  - Authenticated users can seamlessly switch between the workspace and the one-off auditor via the navigation header.
+
+
 
