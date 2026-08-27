@@ -1,12 +1,14 @@
 # PagePilot — Current Status
 
 **Last Updated:** August 2026  
-**Current Milestone:** Milestone 2 — Accounts & Projects (Active / In Progress)  
+**Current Milestone:** Milestone 2 — Accounts & Projects (Tasks 2.1–2.5 Implementation Complete; Runtime Postgres RLS Pending Staging)  
 **Previous Milestones:** Milestone 0 — Product Foundation & Monorepo Setup (Complete & Verified), Milestone 1 — Core Audit MVP (Complete & Verified)
 
 ---
 
-## 1. Verified CurrentThe PagePilot monorepo architecture, core landing-page audit MVP, **Milestone 2 Task 2.1 Supabase Schema & Multi-Tenant Foundation**, **Milestone 2 Task 2.2 Supabase Auth Integration & Tenant Workspace Foundation**, **Milestone 2 Task 2.3 Projects & Monitored Pages Persistence + API**, **Milestone 2 Task 2.4 Historical Audit Report Persistence & Association**, and **Milestone 2 Task 2.5 Workspace UI, Project/Page Management & Audit History** are **fully implemented, tested, and verified**.
+## 1. Verified Current State
+
+The PagePilot monorepo architecture, core landing-page audit MVP, **Milestone 2 Task 2.1 Supabase Schema & Multi-Tenant Foundation**, **Milestone 2 Task 2.2 Supabase Auth Integration & Tenant Workspace Foundation**, **Milestone 2 Task 2.3 Projects & Monitored Pages Persistence + API**, **Milestone 2 Task 2.4 Historical Audit Report Persistence & Association**, and **Milestone 2 Task 2.5 Workspace UI, Project/Page Management & Audit History** are **fully implemented, tested, and verified**.
 
 ### Monorepo Structure (`pnpm`)
 - `supabase/migrations/`: Multi-tenant schema migrations (`20260827120000_init_multi_tenant_schema.sql`, `20260827130000_monitored_page_uniqueness.sql`, `20260827140000_audit_persistence_and_idempotency.sql`) defining 10 core tables (`profiles`, `organizations`, `memberships`, `projects`, `monitored_pages`, `audit_runs`, `audit_reports`, `score_snapshots`, `findings`, `recommendations`), `latest_successful_audit_run_id`, `idempotency_key` unique constraints, atomic PostgreSQL RPC `persist_completed_audit_report`, and explicit RLS policies for 4 roles (`owner`, `admin`, `member`, `viewer`).
@@ -97,5 +99,5 @@
 - **Completed Milestones:**
   - Milestone 0 — Product Foundation & Monorepo Setup (Tasks 0.1, 0.2, 0.3, 0.4, 0.5) **COMPLETE**
   - Milestone 1 — Core Audit MVP **COMPLETE**
-  - **Milestone 2 — Accounts & Projects (Tasks 2.1, 2.2, 2.3, 2.4, 2.5) COMPLETE & VERIFIED**
-- **Exact Next Task:** Milestone 3 — Inngest Durable Workflows & Weekly Monitoring Automation (Task 3.1: Inngest Setup & Baseline Audit Workflow). historical audit view).
+  - **Milestone 2 — Accounts & Projects (Tasks 2.1–2.5 Implementation Complete; Runtime Postgres RLS Pending Staging)**
+- **Exact Next Task:** Milestone 3 — Inngest Durable Workflows & Weekly Monitoring Automation (Task 3.1: Inngest Setup & Baseline Audit Workflow).

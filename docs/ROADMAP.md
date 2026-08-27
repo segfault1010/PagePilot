@@ -60,7 +60,7 @@ This roadmap defines the evolution of PagePilot from a single-project MVP into a
 ---
 
 ### Milestone 2: Accounts & Projects
-- **Status:** `Active (In Progress)`
+- **Status:** `Implementation Complete (Runtime RLS Pending Staging)`
 - **Product Outcome:** Signed-in growth teams can organize audits into projects, track monitored pages, and retain immutable audit history.
 - **Dependencies:** Milestone 0, Milestone 1.
 - **Tasks:**
@@ -113,7 +113,7 @@ This roadmap defines the evolution of PagePilot from a single-project MVP into a
   - Project deletion cascading to pages, reports, signals, and alerts.
 - **Explicitly Defer:** Team invites beyond email, SAML/SSO, Stripe billing.
 - **Acceptance Criteria:**
-  - Cross-tenant data isolation verified by automated RLS and API authorization tests.
+  - Cross-tenant data isolation verified by API authorization tests & static schema/RLS assertions (runtime Postgres RLS execution pending staging environment).
   - Historical reports remain renderable when prompt or scoring schemas evolve.
   - Deleting a project permanently purges all associated tenant records.
 
