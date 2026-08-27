@@ -213,3 +213,27 @@ export const recommendationEntitySchema = z.object({
   createdAt: z.string().datetime(),
 });
 export type RecommendationEntity = z.infer<typeof recommendationEntitySchema>;
+
+// ---------------------------------------------------------------------------
+// Workspace Context & API Response
+// ---------------------------------------------------------------------------
+
+export const workspaceUserSchema = z.object({
+  id: z.string().uuid(),
+  email: z.string().email(),
+});
+export type WorkspaceUser = z.infer<typeof workspaceUserSchema>;
+
+export const workspaceContextSchema = z.object({
+  user: workspaceUserSchema,
+  profile: profileSchema.nullable(),
+  organization: organizationSchema,
+  membership: membershipSchema,
+  role: roleSchema,
+});
+export type WorkspaceContext = z.infer<typeof workspaceContextSchema>;
+
+export const workspaceResponseSchema = z.object({
+  workspace: workspaceContextSchema,
+});
+export type WorkspaceResponse = z.infer<typeof workspaceResponseSchema>;

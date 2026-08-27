@@ -7,6 +7,8 @@ import {
 } from "@pagepilot/contracts";
 import type { AnalysisOutcome } from "@pagepilot/audit-engine";
 import { analyzeTarget } from "@pagepilot/audit-engine";
+import type { AuthMiddlewareOptions } from "../auth/middleware.js";
+import { requireAuth, requireWorkspace } from "../auth/middleware.js";
 
 // Matches the planned 4 KB JSON request limit.
 const MAX_JSON_BODY_BYTES = "4kb";
@@ -59,7 +61,7 @@ function makeRateLimiter() {
   };
 }
 
-export interface AppOptions {
+export interface AppOptions extends AuthMiddlewareOptions {
   /** Injectable for tests; production uses the real safe-fetch pipeline. */
   analyzeUrl?: (url: string) => Promise<AnalysisOutcome>;
 }
@@ -168,6 +170,9 @@ export function createApp(options: AppOptions = {}): Express {
     express.json({ limit: MAX_JSON_BODY_BYTES })(req, _res, next);
   });
 
+  // -------------------------------------------------------------------------
+  // Anonymous / Public Audit Pipeline (Must remain open and unauthenticated)
+  // -------------------------------------------------------------------------
   app.post("/api/analyze", (req, res) => {
     // Cheap cost protection before any heavy work (fetch, AI).
     const clientIp = getClientIp(req);
@@ -249,6 +254,31 @@ export function createApp(options: AppOptions = {}): Express {
 
   app.use("/api/analyze", (req, res) => {
     res.set("Allow", "POST");
+    sendApiError(
+      res,
+      405,
+      API_ERROR_CODES.methodNotAllowed,
+      `Method ${req.method} is not allowed.`,
+      false,
+    );
+  });
+
+  // -------------------------------------------------------------------------
+  // Authenticated Tenant Workspace Route (Protected)
+  // -------------------------------------------------------------------------
+  app.get(
+    "/api/workspace/me",
+    requireAuth(options),
+    requireWorkspace(options),
+    (req: Request, res: Response) => {
+      res.status(200).json({
+        workspace: req.workspace,
+      });
+    },
+  );
+
+  app.use("/api/workspace/me", (req, res) => {
+    res.set("Allow", "GET");
     sendApiError(
       res,
       405,

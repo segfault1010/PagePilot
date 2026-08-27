@@ -10,7 +10,7 @@ This roadmap defines the evolution of PagePilot from a single-project MVP into a
 |---|---|---|---|
 | **0. Product Foundation** | Maintainable monorepo base | **Complete** | pnpm workspace, shared contracts package, isolated audit engine, apps/web, apps/api, docs ledger |
 | **1. Core Audit MVP** | Trustworthy one-off UX audit | **Complete** | Safe fetch, deterministic checks, Gemini structured audit, report UI |
-| **2. Accounts & Projects** | Saved reports & tenant workspaces | **Active (Next)** | Supabase Auth, organizations, roles, projects, monitored page registry |
+| **2. Accounts & Projects** | Saved reports & tenant workspaces | **Active** | Supabase Auth, organizations, roles, projects, monitored page registry |
 | **3. Continuous Monitoring** | Automated regression alerts | **Planned** | Inngest weekly workflows, score diffing, email alerts, trend dashboard |
 | **4. Collaboration** | Findings turned into team work | **Planned** | Finding work items (`open`, `resolved`), assignees, notes, read-only share links |
 | **5. Integrations & Measurement** | Growth toolchain connectivity | **Planned** | Slack notifications, webhooks, UTM tracking, analytics context import |
@@ -30,12 +30,12 @@ This roadmap defines the evolution of PagePilot from a single-project MVP into a
   - pnpm workspace (`pnpm-workspace.yaml`, `pnpm@11.10.0`).
   - `packages/contracts`: shared Zod schemas, TypeScript types, `API_ERROR_CODES`, and `enforceUrlPolicy` (D40).
   - `packages/audit-engine`: isolated safe fetch, Cheerio snapshot, deterministic checks, Gemini adapter, scoring (D41).
-  - `apps/web`: Vite + React + Tailwind frontend application (`@pagepilot/web`) with 66 unit/UI tests (D42).
-  - `apps/api`: Express API handler on Vercel Node runtime (`@pagepilot/api`) with 23 integration tests (D42).
+  - `apps/web`: Vite + React + Tailwind frontend application (`@pagepilot/web`) with 72 unit/UI tests (D42, D44).
+  - `apps/api`: Express API handler on Vercel Node runtime (`@pagepilot/api`) with 30 integration tests (D42, D44).
   - Root thin Vercel adapter (`api/analyze.ts`) with `vercel.json` routing.
 - **Acceptance Criteria Verified:**
   - Workspace compiles under `pnpm run build` and passes strict typechecking (`pnpm run typecheck`).
-  - Full test suite (224 tests across 20 test files) passes across all packages and apps.
+  - Full test suite (258 tests across 27 test files) passes across all packages and apps.
   - Vercel build and live Gemini verification (`pnpm run verify:gemini`) verified on local dev server.
 
 ---
@@ -54,7 +54,7 @@ This roadmap defines the evolution of PagePilot from a single-project MVP into a
   - Lightweight in-memory rate limiting (5 req / 10 min / warm instance).
 - **Explicitly Defer:** Persistence, accounts, screenshots, third-party integrations.
 - **Acceptance Criteria:**
-  - 100% test coverage across URL policy, SSRF, extraction, scoring, schemas, and UI (224 tests passing).
+  - 100% test coverage across URL policy, SSRF, extraction, scoring, schemas, and UI (258 tests passing).
   - Zero raw HTML, secrets, or internal details exposed to client.
 
 ---
@@ -72,10 +72,18 @@ This roadmap defines the evolution of PagePilot from a single-project MVP into a
     - Cascading deletion semantics from projects to all child records (with `ON DELETE SET NULL` on `latest_audit_run_id`).
     - 90-day compact data model excluding raw HTML.
     - Contracts types & schemas exported in `@pagepilot/contracts`.
-  - **Task 2.2 — Supabase Auth Integration & Tenant Workspaces (`Next`)**:
-    - Email/Magic Link auth, session management, and server-side organization authorization.
+  - **Task 2.2 — Supabase Auth Integration & Tenant Workspaces (`Complete & Verified`)**:
+    - Browser-safe Supabase client (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`) with zero secret leakage.
+    - Lightweight client `AuthProvider` (`useAuth`) with session lifecycle management, sign in, sign up, sign out, and workspace sync.
+    - Accessible `<AuthModal />` (dialog, tablist, aria-live alerts) and `<AuthNav />` header controls.
+    - Server auth middleware (`requireAuth`, `requireWorkspace`, `requireOrgRole`) deriving identity strictly from verified JWT sessions.
+    - Idempotent and concurrency-safe first-user workspace provisioning using database unique constraints.
+    - Protected `GET /api/workspace/me` returning `WorkspaceResponse`.
+    - Zero disruption to anonymous audits (`POST /api/analyze` remains open and unauthenticated).
+  - **Task 2.3 — Projects & Monitored Pages Persistence & API (`Next`)**:
+    - Authenticated project CRUD and monitored page management with RLS policy enforcement.
 - **Must Include:**
-  - Supabase Auth (Email / Magic Link).
+  - Supabase Auth (Email / Password / Magic Link).
   - Multi-tenant data model: `organization`, `membership`, `profile`, `project`, `monitored_page`, `audit_run`, `audit_report`.
   - Organization roles: `owner`, `admin`, `member`, `viewer`.
   - Explicit Row-Level Security (RLS) on all tenant-owned tables.

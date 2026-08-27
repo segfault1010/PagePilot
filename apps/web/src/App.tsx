@@ -6,6 +6,8 @@ import { ErrorState } from "./features/analysis/components/error-state";
 import { Landing } from "./features/analysis/components/landing";
 import { ReportView } from "./features/analysis/components/report-view";
 import { analyzeUrl } from "./features/analysis/api";
+import { AuthProvider } from "./features/auth/auth-context";
+import { AuthNav } from "./features/auth/components/auth-nav";
 
 /**
  * Minimum time the loading view stays up. Fast API responses would
@@ -24,7 +26,7 @@ type View =
   | { name: "report"; url: string; report: Report }
   | { name: "failure"; url: string; error: ApiError };
 
-export default function App() {
+export function AppContent() {
   const [view, setView] = useState<View>({ name: "landing" });
   const [draftUrl, setDraftUrl] = useState("");
 
@@ -121,7 +123,7 @@ export default function App() {
 
 function MiniHeader({ onHome }: { onHome: () => void }) {
   return (
-    <header className="mx-auto flex w-full max-w-5xl items-center px-6 py-6">
+    <header className="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-6">
       <button
         type="button"
         onClick={onHome}
@@ -130,6 +132,15 @@ function MiniHeader({ onHome }: { onHome: () => void }) {
       >
         <BrandMark />
       </button>
+      <AuthNav />
     </header>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }

@@ -78,115 +78,6 @@ The pipeline fetches and parses raw HTML exclusively. Target-site JavaScript is 
 
 Destination addresses must be global unicast space (`ipaddr.js` range `unicast` for both IPv4 and IPv6). Loopback, unspecified, RFC1918, CGNAT, link-local/metadata-service (169.254.169.254), multicast, reserved/benchmark blocks, IPv6 loopback/link-local/unique-local, IPv4-mapped, 6to4, and Teredo are all rejected. DNS returns ALL records; if any single record is unsafe the entire destination is rejected (mixed-record rebinding defense). Hostname strings are never trusted — only resolved IPs.
 
-## D18 — Pinned socket connection to eliminate DNS rebinding windows (Phase 4)
-
-Node `fetch` does not pin IP connections across redirects or keepalives. The safe fetch pipeline creates pinned `http.Agent` / `https.Agent` instances that route connections directly to the pre-validated IP address while setting `servername` (TLS SNI) and `Host` headers to the original target hostname. This closes TOCTOU rebinding windows.
-
-## D19 — Manual redirect loop with full hop revalidation (Phase 4)
-
-Automatic fetch redirect following is disabled (`redirect: "manual"`). Each redirect hop (max 3) extracts the `Location` header, resolves relative URLs against the previous hop URL, and runs the entire policy from scratch: URL syntax, standard ports, protocol, all-records DNS resolution, global-unicast IP validation, and connection pinning.
-
-## D20 — Streaming body byte limit with uncompressed counting (Phase 4)
-
-Decoded HTML bodies are capped at 1.5 MB (`MAX_BODY_BYTES = 1_572_864`). Streaming data is intercepted after transport decompression (gzip, deflate, brotli) to defend against compression bombs. Fetch duration is bounded by an 8-second total timeout via `AbortSignal`.
-
-## D21 — Bounded Cheerio extraction & deterministic checks (Phase 4)
-
-Raw HTML is parsed with Cheerio and reduced into a compact `PageSnapshot`:
-- Text excerpt capped at 12,000 characters.
-- Headings capped at 30 items.
-- Sampled links (12), buttons (12), forms (3), CTA candidates (8).
-- Deterministic checks generate `DetectedSignal[]` for 7 categories (`pass`, `warn`, `unknown`). Unknown signals carry `0` penalty weight.
-
-## D22 — Structured Gemini audit via responseJsonSchema (Phase 5)
-
-Gemini calls use structured JSON output mode (`responseMimeType: "application/json"`, `responseJsonSchema`). The prompt provides bounded snapshot evidence, heading outline, text excerpt, sample interactive elements, and deterministic signals. The model returns 7 category assessments, top 3 problems, quick wins, and detailed recommendations.
-
-## D23 — Strict two-stage schema validation and signal reference integrity (Phase 5)
-
-Model output is parsed and validated in two stages:
-1. `geminiWireAuditSchema` validates wire format (flat tagged findings list, required fields, bounded string lengths).
-2. Wire findings are regrouped into domain `CategoryReport` structures.
-3. `checkSignalReferences` verifies every cited `signalId` exists in deterministic signals and matches the finding category. Any foreign/fabricated signal ID causes safe rejection (`502 UPSTREAM_FAILURE`).
-
-## D24 — Server-side deterministic + AI scoring arithmetic (Phase 5)
-
-Final scores are computed server-side:
-- Deterministic category baselines calculated from pass/warn signal weights.
-- When applicable signal coverage is $\ge 40\%$, category scores are blended: $0.60 \times \text{AI} + 0.40 \times \text{Baseline}$.
-- Overall score is weighted sum across 7 categories: Clarity (18%), Visual Hierarchy (15%), CTA Effectiveness (15%), Copy (12%), Accessibility (15%), Mobile UX (10%), Trust & Credibility (15%).
-- Overall score confidence is conservative (`blended` vs `ai-led`).
-
-## D25 — Accessible UI design system (Phase 2 & Phase 5)
-
-- Pure semantic HTML structure (`<main>`, `<section aria-labelledby>`, `<article>`, `<header>`, `<footer>`).
-- Contrast-accessible score rings with distinct visual treatments for passing, warning, and not-measured states.
-- Reduced motion support (`prefers-reduced-motion: no-preference` guards, `motion-safe:animate-spin`).
-- Loading states use an honest 3-phase cycle with a minimum hold to eliminate UI flashing.
-
-## D26–D38 — Historical Milestone 1 Implementation Decisions
-
-Recorded during MVP phases 1–5 covering error envelopes, rate limiting, logging sanitization, test coverage guarantees, and deployment configuration.
-
-## D39 — Monorepo Architecture & Control Plane Alignment (Milestone 0)
-
-To support the evolution into continuous landing-page UX intelligence (Milestone 2+ accounts, projects, Inngest monitoring, and collaboration):
-- **Source of truth control plane**:
-  - `docs/STATUS.md` is the ground-truth ledger of verified behavior, test results, active milestone, and exact next task.
-  - `docs/ROADMAP.md` tracks milestone progression (`planned|active|complete|deferred`), scope boundaries, and acceptance criteria.
-  - `docs/PLAN.md` defines product vision, architecture specifications, and data models.
-  - `docs/DECISIONS.md` records immutable architectural, security, persistence, and vendor choices.
-- **Gemini model configuration**: The audit adapter defaults to `gemini-3.6-flash` and supports `gemini-3.7-flash` via `GEMINI_MODEL` with low thinking mode (`thinkingLevel: "low"`) to respect the 30-second serverless execution budget.
-- **Uncompromised security boundary**: SSRF protections, all-records DNS resolution, global-unicast IP filtering (`ipaddr.js`), connection pinning, manual redirect revalidation, and strict Zod model output validation remain non-negotiable across scheduled runs and future integrations.
-
-## D40 — Shared Contracts Extraction (@pagepilot/contracts) (Milestone 0)
-
-Shared Zod schemas, TypeScript types, machine-readable error codes (`API_ERROR_CODES`), and URL policy validation (`enforceUrlPolicy`) were extracted from `src/shared/` into an isolated workspace package: `packages/contracts/` (`@pagepilot/contracts`).
-
-Key architectural decisions:
-- **Clean contract boundary**: `@pagepilot/contracts` contains only runtime-agnostic schemas, domain types, error codes, and pure validation functions. It has zero application or database dependencies and depends only on `zod`.
-- **Fixture separation**: Non-contract fixture data (`sampleReport`) was relocated to `src/client/features/analysis/sample-report.ts` and `tests/fixtures/` to ensure the contracts package contains only schema authority, not application mock state.
-- **Workspace export structure**: Packaged with `"name": "@pagepilot/contracts"`, ESM module format, TypeScript declarations, and workspace linking (`"@pagepilot/contracts": "workspace:*"`) across consumers.
-- **Package-local test suite**: Dedicated contract tests added under `packages/contracts/tests/` verifying schema validation, boundary enforcement, and URL policy correctness independently of root application tests.
-
-## D41 — Isolated Audit Engine Extraction (@pagepilot/audit-engine) (Milestone 0)
-
-The core landing-page audit engine was extracted from `src/server/` into an independent workspace package: `packages/audit-engine/` (`@pagepilot/audit-engine`).
-
-Key architectural decisions:
-- **Clean pipeline encapsulation**: `@pagepilot/audit-engine` contains the entire safe analysis pipeline:
-  - `src/fetch/`: IP routing policy (`ipaddr.js`), all-records DNS resolver (`dns.lookup`), and SSRF-safe pinned streaming fetcher (`createSafeFetcher`).
-  - `src/extract/`: Bounded HTML Cheerio snapshot extractor (`buildPageSnapshot`) and deterministic signal generator (`runDeterministicChecks`).
-  - `src/ai/`: Bounded model input serializer (`buildAuditModelInput`) and Gemini structured output adapter (`createGeminiAuditor`).
-  - `src/schemas/`: Strict wire and domain audit Zod schemas (`geminiAuditSchema`) and signal-reference integrity checker (`checkSignalReferences`).
-  - `src/scoring/`: Deterministic baseline scoring, 60/40 blending arithmetic, and overall report builder (`scoreReport`).
-  - `src/pipeline.ts`: Pipeline orchestrator function (`analyzeTarget`) coordinating safe fetch, extraction, checks, AI audit, validation, and scoring into an `AnalysisOutcome`.
-- **Pure package boundaries**: `@pagepilot/audit-engine` depends strictly on `@pagepilot/contracts`, `cheerio`, `ipaddr.js`, and `zod`. It has zero Express, HTTP routing, frontend, Supabase, or database persistence dependencies.
-- **Node ESM runtime compatibility**: All internal package imports use explicit `.js` specifiers (`./fetch/safe-fetch.js`, `../schemas/audit.js`, etc.) to guarantee seamless Vercel Node serverless and Node ESM execution.
-- **Server integration**: `src/server/http/app.ts` imports `analyzeTarget` and `AnalysisOutcome` from `@pagepilot/audit-engine`, eliminating duplicate server logic in the root codebase.
-- **Independent test suite**: 9 package-level test suites containing 119 unit and pipeline tests live under `packages/audit-engine/tests/` alongside HTML and Gemini fixtures.
-
-## D42 — Monorepo Application Migration (apps/web & apps/api) (Milestone 0)
-
-Frontend client code and HTTP API server code were migrated into their target monorepo application packages: `apps/web/` (`@pagepilot/web`) and `apps/api/` (`@pagepilot/api`).
-
-Key architectural decisions:
-- **Frontend package (`apps/web`)**:
-  - Contains Vite + React 19 + TypeScript + Tailwind CSS v4 client application (`src/App.tsx`, `src/main.tsx`, `src/index.css`, `src/features/analysis/`).
-  - Contains package-local tests (`apps/web/tests/`, 7 test files, 66 tests) covering UI rendering, form submission, loading states, error states, and reduced motion.
-  - Strictly depends only on `@pagepilot/contracts` (no server dependencies, no secrets, no audit engine).
-  - Builds static production bundle directly to `apps/web/dist/`.
-- **Backend API package (`apps/api`)**:
-  - Contains Express HTTP API application (`src/http/app.ts`, `src/index.ts`, `api/analyze.ts`).
-  - Contains package-local integration tests (`apps/api/tests/`, 2 test files, 23 tests) covering request validation, error envelopes, rate limiting, and the full pipeline.
-  - Strictly depends on `@pagepilot/contracts` and `@pagepilot/audit-engine`.
-- **Thin Vercel adapter at root**:
-  - `api/analyze.ts` remains at root as a minimal pass-through importing `createApp` from `@pagepilot/api`.
-  - `vercel.json` configures `buildCommand: "pnpm --filter @pagepilot/web build"` and `outputDirectory: "apps/web/dist"`, guaranteeing 100% deployment parity on Vercel.
-- **Clean directory state**:
-  - Obsolete root `src/` and `tests/` directories were completely removed after all 224 workspace tests, builds, and live Gemini verifications passed.
-- Root `package.json` coordinates all workspace packages with zero duplicate source files.
-
 ## D43 — Multi-Tenant Schema, Explicit RLS Policy Model, and Report Immutability Strategy (Milestone 2)
 
 To establish the PostgreSQL / Supabase multi-tenant persistence foundation for Milestone 2:
@@ -214,3 +105,26 @@ To establish the PostgreSQL / Supabase multi-tenant persistence foundation for M
 - **Migration & Verification Strategy**:
   - Migration created at `supabase/migrations/20260827120000_init_multi_tenant_schema.sql`.
   - Validated with static SQL assertions (`packages/contracts/tests/migration-schema.test.ts`) and type validation (`packages/contracts/tests/database-types.test.ts`). Local environment lacks Docker daemon for runtime Supabase container tests; runtime DB verification remains recorded for the live staging environment.
+
+## D44 — Supabase Auth Integration, Browser/Server Credential Boundaries, and Idempotent Workspace Provisioning (Milestone 2)
+
+To integrate Supabase Auth into the web and API architectures while preserving the anonymous one-off audit MVP with zero regressions:
+- **Strict Credential Separation**:
+  - Browser bundle (`apps/web/dist`) receives only public Supabase credentials via `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`.
+  - Server secrets (`SUPABASE_SERVICE_ROLE_KEY`, `GEMINI_API_KEY`) remain strictly server-only in `apps/api` and are verified absent from client bundles.
+- **Zero-Disruption Anonymous Audit Pipeline**:
+  - `POST /api/analyze` remains open, unauthenticated, and 100% functional for public visitors.
+  - Client applications gracefully initialize without throwing if Supabase environment variables are unconfigured.
+- **Server Auth Boundary & Identity Verification**:
+  - Server-side auth middleware (`apps/api/src/auth/middleware.ts`) extracts `Authorization: Bearer <token>` and verifies the JWT via Supabase Auth (`supabase.auth.getUser(token)`).
+  - Client-supplied identity headers (e.g. `x-user-id`, `x-organization-id`) are ignored; user identity is derived strictly from the verified session.
+  - Protected routes return safe, sanitized error envelopes (`401 UNAUTHENTICATED`, `403 FORBIDDEN`) without exposing JWT contents or database internals.
+- **Idempotent First-User Workspace Provisioning**:
+  - When an authenticated user signs in, `resolveOrProvisionWorkspace` checks for an existing membership in `memberships`.
+  - If no membership exists, it atomically provisions an organization and an `owner` membership using database unique constraints (`UNIQUE(organization_id, user_id)`) to eliminate race conditions between concurrent requests.
+- **Typed Workspace Context**:
+  - Added `WorkspaceContext` and `WorkspaceResponse` schemas to `@pagepilot/contracts` (`database-types.ts`).
+  - Added `GET /api/workspace/me` protected endpoint returning `{ workspace: WorkspaceContext }`.
+- **Client Auth State & UI**:
+  - Implemented lightweight `AuthProvider` (`apps/web/src/features/auth/auth-context.tsx`) managing session lifecycle, sign-in, sign-up, sign-out, and auto-refresh of workspace context.
+  - Added accessible `<AuthModal />` (with tablist semantics, keyboard navigation, and polite aria alerts) and `<AuthNav />` header controls.

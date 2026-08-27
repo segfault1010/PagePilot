@@ -3,6 +3,7 @@ import { Badge } from "./badge";
 import { BrandMark } from "./brand-mark";
 import { ReportView } from "./report-view";
 import { UrlForm } from "./url-form";
+import { AuthNav } from "../../auth/components/auth-nav";
 
 export function Landing({
   initialUrl,
@@ -21,9 +22,9 @@ export function Landing({
         >
           <BrandMark />
         </a>
-        <span className="text-xs font-medium uppercase tracking-widest text-neutral-600">
-          MVP preview
-        </span>
+        <div className="flex items-center gap-4">
+          <AuthNav />
+        </div>
       </header>
 
       <main className="flex-1">
