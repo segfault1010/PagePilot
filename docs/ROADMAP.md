@@ -60,9 +60,20 @@ This roadmap defines the evolution of PagePilot from a single-project MVP into a
 ---
 
 ### Milestone 2: Accounts & Projects
-- **Status:** `Active (Next)`
+- **Status:** `Active (In Progress)`
 - **Product Outcome:** Signed-in growth teams can organize audits into projects, track monitored pages, and retain immutable audit history.
 - **Dependencies:** Milestone 0, Milestone 1.
+- **Tasks:**
+  - **Task 2.1 — Supabase Schema & Multi-Tenant Migration (`Complete & Verified`)**:
+    - Complete normalized SQL migration `supabase/migrations/20260827120000_init_multi_tenant_schema.sql` defining `profiles`, `organizations`, `memberships`, `projects`, `monitored_pages`, `audit_runs`, `audit_reports`, `score_snapshots`, `findings`, `recommendations`.
+    - Explicit RLS enabled and forced across all 10 tables with SECURITY DEFINER helpers (`is_org_member`, `get_org_role`, `is_org_admin_or_owner`, `is_org_owner`).
+    - Roles: `owner`, `admin`, `member`, `viewer` (read-only for viewers; mutations restricted to authorized roles).
+    - Immutable historical report schema with `REPORT_SCHEMA_VERSION = "1.0.0"` and complete self-contained `report_payload` JSONB.
+    - Cascading deletion semantics from projects to all child records (with `ON DELETE SET NULL` on `latest_audit_run_id`).
+    - 90-day compact data model excluding raw HTML.
+    - Contracts types & schemas exported in `@pagepilot/contracts`.
+  - **Task 2.2 — Supabase Auth Integration & Tenant Workspaces (`Next`)**:
+    - Email/Magic Link auth, session management, and server-side organization authorization.
 - **Must Include:**
   - Supabase Auth (Email / Magic Link).
   - Multi-tenant data model: `organization`, `membership`, `profile`, `project`, `monitored_page`, `audit_run`, `audit_report`.

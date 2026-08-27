@@ -185,4 +185,32 @@ Key architectural decisions:
   - `vercel.json` configures `buildCommand: "pnpm --filter @pagepilot/web build"` and `outputDirectory: "apps/web/dist"`, guaranteeing 100% deployment parity on Vercel.
 - **Clean directory state**:
   - Obsolete root `src/` and `tests/` directories were completely removed after all 224 workspace tests, builds, and live Gemini verifications passed.
-  - Root `package.json` coordinates all workspace packages with zero duplicate source files.
+- Root `package.json` coordinates all workspace packages with zero duplicate source files.
+
+## D43 — Multi-Tenant Schema, Explicit RLS Policy Model, and Report Immutability Strategy (Milestone 2)
+
+To establish the PostgreSQL / Supabase multi-tenant persistence foundation for Milestone 2:
+- **Tenant Boundary & Role Hierarchy**:
+  - Four explicit organization roles: `owner`, `admin`, `member`, `viewer`.
+  - Deterministic tenant ownership chain: `organization` $\rightarrow$ `project` $\rightarrow$ `monitored_page` $\rightarrow$ `audit_run` $\rightarrow$ `audit_report` $\rightarrow$ (`score_snapshots`, `findings`, `recommendations`).
+  - Uniqueness constraint `UNIQUE(organization_id, user_id)` guarantees unambiguous role resolution per tenant.
+- **SECURITY DEFINER Helper Functions**:
+  - Created `public.is_org_member`, `public.get_org_role`, `public.is_org_admin_or_owner`, and `public.is_org_owner` with fixed `search_path = public, auth, pg_temp`.
+  - These prevent recursive RLS evaluations on `memberships` and provide fast, stable authorization predicates for all downstream tables.
+- **Row-Level Security (RLS) Policy Model**:
+  - `ENABLE ROW LEVEL SECURITY` and `FORCE ROW LEVEL SECURITY` applied across all 10 tables: `profiles`, `organizations`, `memberships`, `projects`, `monitored_pages`, `audit_runs`, `audit_reports`, `score_snapshots`, `findings`, `recommendations`.
+  - Zero use of `USING (true)` or `WITH CHECK (true)` on tenant-owned tables.
+  - `viewer` role is restricted to read-only (`SELECT`) operations; mutations (`INSERT`, `UPDATE`, `DELETE`) require `member`, `admin`, or `owner` privileges according to the action.
+- **Historical Report Immutability**:
+  - `audit_reports` stores `schema_version` (canonical constant `"1.0.0"`), `model_identifier`, `check_version`, `scoring_version`, `summary`, `overall_score`, `score_confidence`, and the complete self-contained `report_payload` JSONB.
+  - RLS strictly forbids `UPDATE` on `audit_reports`, `score_snapshots`, and `recommendations`. Completed reports represent immutable historical evidence that can never be modified or recalculated in place.
+- **Deletion Cascade Semantics**:
+  - Deleting a project cascades deletion through all child entities: `monitored_pages`, `audit_runs`, `audit_reports`, `score_snapshots`, `findings`, `recommendations`.
+  - `monitored_pages.latest_audit_run_id` uses `ON DELETE SET NULL` to avoid circular cascade locks.
+- **Data Retention & HTML Exclusion**:
+  - In alignment with the 90-day compact retention model, raw target HTML is **never stored** in the database. Only normalized Cheerio snapshots, deterministic signals, and validated report JSON are retained.
+- **Contracts Synchronization**:
+  - Database entity schemas and TypeScript types exported from `@pagepilot/contracts` (`packages/contracts/src/database-types.ts`) guaranteeing 100% type parity between persistence and application tiers.
+- **Migration & Verification Strategy**:
+  - Migration created at `supabase/migrations/20260827120000_init_multi_tenant_schema.sql`.
+  - Validated with static SQL assertions (`packages/contracts/tests/migration-schema.test.ts`) and type validation (`packages/contracts/tests/database-types.test.ts`). Local environment lacks Docker daemon for runtime Supabase container tests; runtime DB verification remains recorded for the live staging environment.
