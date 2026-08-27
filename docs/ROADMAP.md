@@ -80,8 +80,15 @@ This roadmap defines the evolution of PagePilot from a single-project MVP into a
     - Idempotent and concurrency-safe first-user workspace provisioning using database unique constraints.
     - Protected `GET /api/workspace/me` returning `WorkspaceResponse`.
     - Zero disruption to anonymous audits (`POST /api/analyze` remains open and unauthenticated).
-  - **Task 2.3 — Projects & Monitored Pages Persistence & API (`Next`)**:
+  - **Task 2.3 — Projects & Monitored Pages Persistence & API (`Complete & Verified`)**:
     - Authenticated project CRUD and monitored page management with RLS policy enforcement.
+    - Explicit role matrix (`owner`/`admin` delete projects; `member` project create/read/update & page CRUD; `viewer` read-only).
+    - Monitored page duplicate registration protection (`uq_monitored_pages_project_url` + 409 Conflict).
+    - Clear separation between URL security policy (`enforceUrlPolicy`) and domain metadata canonicalization (`normalizeDomain`).
+    - Web API client (`apps/web/src/features/projects/api.ts`) with automatic session token attachment.
+    - Manipulated ID and cross-tenant isolation protection (safe 404 behavior).
+  - **Task 2.4 — Historical Audit Report Persistence & Association (`Next`)**:
+    - Persist audit runs, immutable reports, score snapshots, and findings linked to monitored pages.
 - **Must Include:**
   - Supabase Auth (Email / Password / Magic Link).
   - Multi-tenant data model: `organization`, `membership`, `profile`, `project`, `monitored_page`, `audit_run`, `audit_report`.

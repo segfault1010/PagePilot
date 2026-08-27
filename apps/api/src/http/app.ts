@@ -9,6 +9,8 @@ import type { AnalysisOutcome } from "@pagepilot/audit-engine";
 import { analyzeTarget } from "@pagepilot/audit-engine";
 import type { AuthMiddlewareOptions } from "../auth/middleware.js";
 import { requireAuth, requireWorkspace } from "../auth/middleware.js";
+import type { ProjectsStore } from "../projects/projects-store.js";
+import { createProjectsRouter } from "../projects/routes.js";
 
 // Matches the planned 4 KB JSON request limit.
 const MAX_JSON_BODY_BYTES = "4kb";
@@ -64,6 +66,8 @@ function makeRateLimiter() {
 export interface AppOptions extends AuthMiddlewareOptions {
   /** Injectable for tests; production uses the real safe-fetch pipeline. */
   analyzeUrl?: (url: string) => Promise<AnalysisOutcome>;
+  /** Injectable for tests; production instantiates SupabaseProjectsStore with user authToken. */
+  getProjectsStore?: (req: Request) => ProjectsStore;
 }
 
 export function sendApiError(
@@ -287,6 +291,16 @@ export function createApp(options: AppOptions = {}): Express {
       false,
     );
   });
+
+  // -------------------------------------------------------------------------
+  // Authenticated Projects & Monitored Pages Routes (Protected)
+  // -------------------------------------------------------------------------
+  app.use(
+    "/api/projects",
+    requireAuth(options),
+    requireWorkspace(options),
+    createProjectsRouter({ getStore: options.getProjectsStore }),
+  );
 
   app.use("/api", (_req, res) => {
     sendApiError(res, 404, API_ERROR_CODES.notFound, "Unknown API route.", false);

@@ -128,3 +128,26 @@ To integrate Supabase Auth into the web and API architectures while preserving t
 - **Client Auth State & UI**:
   - Implemented lightweight `AuthProvider` (`apps/web/src/features/auth/auth-context.tsx`) managing session lifecycle, sign-in, sign-up, sign-out, and auto-refresh of workspace context.
   - Added accessible `<AuthModal />` (with tablist semantics, keyboard navigation, and polite aria alerts) and `<AuthNav />` header controls.
+
+## D45 — Projects & Monitored Pages Persistence, Authoritative RLS Boundary, Explicit Role Matrix, and Domain/URL Separation (Milestone 2)
+
+To implement persistent Projects and Monitored Pages for authenticated growth teams while upholding multi-tenant security and anonymous audit stability:
+- **Authoritative RLS Security Boundary**:
+  - Row-Level Security (RLS) remains the primary and authoritative database security boundary. Database operations execute using the authenticated user's verified session token (`auth.uid() = req.user.id`).
+  - Application-level tenant filtering (`organization_id = req.workspace.organization.id`) provides defense-in-depth.
+- **Explicit Role Matrix & Project Deletion Policy**:
+  - `owner` and `admin`: full project and monitored page CRUD permissions (including project deletion).
+  - `member`: permitted to create, read, and update projects, and perform monitored page CRUD; **project deletion is strictly forbidden (`403 FORBIDDEN`)** aligning with database RLS policy `projects_delete_policy`.
+  - `viewer`: strictly read-only (`GET` endpoints allowed; all mutations return `403 FORBIDDEN`).
+- **Duplicate Monitored Page Prevention**:
+  - Migration `20260827130000_monitored_page_uniqueness.sql` introduces unique index `uq_monitored_pages_project_url` on `public.monitored_pages(project_id, canonical_url)`.
+  - API endpoints catch duplicate violations and return structured `409 CONFLICT` envelopes.
+- **Strict Separation: URL Policy vs Domain Normalization**:
+  - `enforceUrlPolicy` (`@pagepilot/contracts`): authoritative security validation for monitored pages (absolute http/https, standard ports 80/443, no credentials, returns normalized canonical href).
+  - `normalizeDomain` (`@pagepilot/contracts`): project metadata formatting only (trims whitespace, strips protocol/path, lowercases hostname). Responsibilities remain strictly separated.
+- **Manipulated ID & Cross-Tenant Isolation**:
+  - Cross-organization queries and mismatched nested route lookups (e.g. `/api/projects/:projectId/pages/:pageId` where `pageId` does not belong to `projectId`) return safe `404 NOT_FOUND` to prevent resource probing and cross-tenant mutation.
+  - Client-supplied `x-organization-id` or body parameters are ignored; tenant context is derived strictly from verified workspace session context.
+- **Web API Client Token Handling**:
+  - Web client API helpers (`apps/web/src/features/projects/api.ts`) automatically obtain the active Supabase session token via `getSupabaseClient().auth.getSession()` and attach `Authorization: Bearer <token>`, eliminating manual header construction for callers.
+

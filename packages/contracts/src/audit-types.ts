@@ -150,6 +150,10 @@ export const API_ERROR_CODES = {
   notImplemented: "NOT_IMPLEMENTED",
   notFound: "NOT_FOUND",
   methodNotAllowed: "METHOD_NOT_ALLOWED",
+  unauthenticated: "UNAUTHENTICATED",
+  forbidden: "FORBIDDEN",
+  conflict: "CONFLICT",
+  internalError: "INTERNAL_ERROR",
 } as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[keyof typeof API_ERROR_CODES];

@@ -158,4 +158,15 @@ describe("Supabase Multi-Tenant SQL Migration Validation", () => {
     expect(sql).not.toContain("body_html");
     expect(sql).toContain("report_payload JSONB NOT NULL");
   });
+
+  it("defines unique index on monitored_pages(project_id, canonical_url) in migration", () => {
+    const uniquenessMigrationPath = resolve(
+      process.cwd(),
+      "supabase/migrations/20260827130000_monitored_page_uniqueness.sql",
+    );
+    const uniquenessSql = readFileSync(uniquenessMigrationPath, "utf-8");
+    expect(uniquenessSql).toContain("uq_monitored_pages_project_url");
+    expect(uniquenessSql).toMatch(/CREATE\s+UNIQUE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+uq_monitored_pages_project_url\s+ON\s+public\.monitored_pages\s*\(\s*project_id\s*,\s*canonical_url\s*\)/i);
+  });
 });
+

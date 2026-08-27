@@ -5,6 +5,35 @@ import {
   scoreConfidenceSchema,
   severitySchema,
 } from "./audit-types.js";
+import { enforceUrlPolicy } from "./url-policy.js";
+
+/**
+ * Normalizes a user-entered domain or host string for project metadata.
+ * Strips scheme (http://, https://), trailing path/query/hashes, and lowercases.
+ * This is strictly metadata canonicalization and does not replace or merge with
+ * the authoritative security validation in enforceUrlPolicy.
+ */
+export function normalizeDomain(raw: string): string {
+  const trimmed = raw.trim().toLowerCase();
+  if (trimmed.length === 0) return "";
+
+  let candidate = trimmed;
+  if (/^https?:\/\//i.test(candidate)) {
+    try {
+      const parsed = new URL(candidate);
+      candidate = parsed.hostname;
+    } catch {
+      candidate = candidate.replace(/^https?:\/\//i, "");
+    }
+  }
+
+  candidate = candidate.split("/")[0] || "";
+  candidate = candidate.split("?")[0] || "";
+  candidate = candidate.split("#")[0] || "";
+  candidate = candidate.split(":")[0] || "";
+
+  return candidate.trim();
+}
 
 /**
  * Single source of truth for persistent multi-tenant database contracts
@@ -237,3 +266,155 @@ export const workspaceResponseSchema = z.object({
   workspace: workspaceContextSchema,
 });
 export type WorkspaceResponse = z.infer<typeof workspaceResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// Project API Request & Response Schemas
+// ---------------------------------------------------------------------------
+
+export const createProjectSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1, "Project name is required.")
+    .max(100, "Project name must be 100 characters or fewer."),
+  domain: z
+    .string()
+    .trim()
+    .max(255, "Domain must be 255 characters or fewer.")
+    .optional()
+    .nullable()
+    .transform((val) => (val && val.length > 0 ? normalizeDomain(val) : null)),
+  timezone: z
+    .string()
+    .trim()
+    .max(64, "Timezone must be 64 characters or fewer.")
+    .default("UTC"),
+  goals: z
+    .string()
+    .trim()
+    .max(2000, "Goals must be 2000 characters or fewer.")
+    .optional()
+    .nullable(),
+});
+export type CreateProjectInput = z.input<typeof createProjectSchema>;
+export type CreateProjectOutput = z.output<typeof createProjectSchema>;
+
+export const updateProjectSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1, "Project name cannot be empty.")
+    .max(100, "Project name must be 100 characters or fewer.")
+    .optional(),
+  domain: z
+    .string()
+    .trim()
+    .max(255, "Domain must be 255 characters or fewer.")
+    .optional()
+    .nullable()
+    .transform((val) =>
+      val !== undefined && val !== null
+        ? val.length > 0
+          ? normalizeDomain(val)
+          : null
+        : val,
+    ),
+  timezone: z
+    .string()
+    .trim()
+    .max(64, "Timezone must be 64 characters or fewer.")
+    .optional(),
+  goals: z
+    .string()
+    .trim()
+    .max(2000, "Goals must be 2000 characters or fewer.")
+    .optional()
+    .nullable(),
+});
+export type UpdateProjectInput = z.input<typeof updateProjectSchema>;
+export type UpdateProjectOutput = z.output<typeof updateProjectSchema>;
+
+export const projectResponseSchema = z.object({
+  project: projectSchema,
+});
+export type ProjectResponse = z.infer<typeof projectResponseSchema>;
+
+export const projectListResponseSchema = z.object({
+  projects: z.array(projectSchema),
+  total: z.number().int().min(0),
+});
+export type ProjectListResponse = z.infer<typeof projectListResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// Monitored Page API Request & Response Schemas
+// ---------------------------------------------------------------------------
+
+export const createMonitoredPageSchema = z.object({
+  canonicalUrl: z
+    .string()
+    .trim()
+    .min(1, "Canonical URL is required.")
+    .superRefine((url, ctx) => {
+      const res = enforceUrlPolicy(url);
+      if (!res.ok) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: res.message,
+        });
+      }
+    })
+    .transform((url) => {
+      const res = enforceUrlPolicy(url);
+      return res.ok ? res.url : url;
+    }),
+  cadence: cadenceSchema.default("weekly"),
+  status: monitoredPageStatusSchema.default("active"),
+  tags: z
+    .array(z.string().trim().max(50, "Tag must be 50 characters or fewer."))
+    .max(20, "Cannot exceed 20 tags.")
+    .default([]),
+});
+export type CreateMonitoredPageInput = z.input<typeof createMonitoredPageSchema>;
+export type CreateMonitoredPageOutput = z.output<typeof createMonitoredPageSchema>;
+
+export const updateMonitoredPageSchema = z.object({
+  canonicalUrl: z
+    .string()
+    .trim()
+    .min(1, "Canonical URL cannot be empty.")
+    .superRefine((url, ctx) => {
+      const res = enforceUrlPolicy(url);
+      if (!res.ok) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: res.message,
+        });
+      }
+    })
+    .transform((url) => {
+      const res = enforceUrlPolicy(url);
+      return res.ok ? res.url : url;
+    })
+    .optional(),
+  cadence: cadenceSchema.optional(),
+  status: monitoredPageStatusSchema.optional(),
+  tags: z
+    .array(z.string().trim().max(50, "Tag must be 50 characters or fewer."))
+    .max(20, "Cannot exceed 20 tags.")
+    .optional(),
+  ownerId: z.string().uuid("Invalid owner user ID.").optional().nullable(),
+});
+export type UpdateMonitoredPageInput = z.input<typeof updateMonitoredPageSchema>;
+export type UpdateMonitoredPageOutput = z.output<typeof updateMonitoredPageSchema>;
+
+export const monitoredPageResponseSchema = z.object({
+  page: monitoredPageSchema,
+});
+export type MonitoredPageResponse = z.infer<typeof monitoredPageResponseSchema>;
+
+export const monitoredPageListResponseSchema = z.object({
+  pages: z.array(monitoredPageSchema),
+  total: z.number().int().min(0),
+});
+export type MonitoredPageListResponse = z.infer<typeof monitoredPageListResponseSchema>;
+
