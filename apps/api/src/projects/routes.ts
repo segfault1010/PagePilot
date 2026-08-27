@@ -13,6 +13,9 @@ import {
   SupabaseProjectsStore,
 } from "./projects-store.js";
 import type { ProjectsStore } from "./projects-store.js";
+import { createAuditsRouter } from "../audits/routes.js";
+import type { AuditPersistenceStore } from "../audits/audit-store.js";
+import type { AnalysisOutcome } from "@pagepilot/audit-engine";
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -30,6 +33,8 @@ function getParam(req: Request, name: string): string {
 
 export interface ProjectRoutesOptions {
   getStore?: (req: Request) => ProjectsStore;
+  getAuditStore?: (req: Request) => AuditPersistenceStore;
+  analyzeUrl?: (url: string) => Promise<AnalysisOutcome>;
 }
 
 export function createProjectsRouter(options: ProjectRoutesOptions = {}): Router {
@@ -505,6 +510,18 @@ export function createProjectsRouter(options: ProjectRoutesOptions = {}): Router
         );
       }
     },
+  );
+
+  // =========================================================================
+  // 3. Monitored Page Audits & History (Nested under /:projectId/pages/:pageId/audits)
+  // =========================================================================
+  router.use(
+    "/:projectId/pages/:pageId/audits",
+    createAuditsRouter({
+      getProjectsStore: getStore,
+      getAuditStore: options.getAuditStore,
+      analyzeUrl: options.analyzeUrl,
+    }),
   );
 
   return router;

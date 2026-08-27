@@ -63,11 +63,15 @@ function makeRateLimiter() {
   };
 }
 
+import type { AuditPersistenceStore } from "../audits/audit-store.js";
+
 export interface AppOptions extends AuthMiddlewareOptions {
   /** Injectable for tests; production uses the real safe-fetch pipeline. */
   analyzeUrl?: (url: string) => Promise<AnalysisOutcome>;
   /** Injectable for tests; production instantiates SupabaseProjectsStore with user authToken. */
   getProjectsStore?: (req: Request) => ProjectsStore;
+  /** Injectable for tests; production instantiates SupabaseAuditPersistenceStore with user authToken. */
+  getAuditStore?: (req: Request) => AuditPersistenceStore;
 }
 
 export function sendApiError(
@@ -299,7 +303,11 @@ export function createApp(options: AppOptions = {}): Express {
     "/api/projects",
     requireAuth(options),
     requireWorkspace(options),
-    createProjectsRouter({ getStore: options.getProjectsStore }),
+    createProjectsRouter({
+      getStore: options.getProjectsStore,
+      getAuditStore: options.getAuditStore,
+      analyzeUrl: options.analyzeUrl,
+    }),
   );
 
   app.use("/api", (_req, res) => {

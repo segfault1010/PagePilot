@@ -41,6 +41,9 @@ export function normalizeDomain(raw: string): string {
  */
 
 export const REPORT_SCHEMA_VERSION = "1.0.0" as const;
+export const AUDIT_ENGINE_CHECK_VERSION = "1.0.0" as const;
+export const AUDIT_ENGINE_PROMPT_VERSION = "1.0.0" as const;
+export const AUDIT_ENGINE_SCORING_VERSION = "1.0.0" as const;
 
 export const ORGANIZATION_ROLES = ["owner", "admin", "member", "viewer"] as const;
 export const roleSchema = z.enum(ORGANIZATION_ROLES);
@@ -76,12 +79,17 @@ export const RECOMMENDATION_TYPES = ["quick_win", "detailed"] as const;
 export const recommendationTypeSchema = z.enum(RECOMMENDATION_TYPES);
 export type RecommendationType = z.infer<typeof recommendationTypeSchema>;
 
-export const WORK_STATUSES = ["open", "in_progress", "resolved", "dismissed"] as const;
+export const WORK_STATUSES = [
+  "open",
+  "in_progress",
+  "resolved",
+  "dismissed",
+] as const;
 export const workStatusSchema = z.enum(WORK_STATUSES);
 export type WorkStatus = z.infer<typeof workStatusSchema>;
 
 // ---------------------------------------------------------------------------
-// Entity Schemas & Types
+// Entity Schemas
 // ---------------------------------------------------------------------------
 
 export const profileSchema = z.object({
@@ -137,6 +145,7 @@ export const monitoredPageSchema = z.object({
   ownerId: z.string().uuid().nullable().optional(),
   tags: z.array(z.string()).default([]),
   latestAuditRunId: z.string().uuid().nullable().optional(),
+  latestSuccessfulAuditRunId: z.string().uuid().nullable().optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -152,6 +161,7 @@ export const auditRunSchema = z.object({
   targetUrl: z.string().url(),
   finalUrl: z.string().url().nullable().optional(),
   triggeredByUserId: z.string().uuid().nullable().optional(),
+  idempotencyKey: z.string().nullable().optional(),
   startedAt: z.string().datetime().nullable().optional(),
   completedAt: z.string().datetime().nullable().optional(),
   failedAt: z.string().datetime().nullable().optional(),
@@ -417,4 +427,68 @@ export const monitoredPageListResponseSchema = z.object({
   total: z.number().int().min(0),
 });
 export type MonitoredPageListResponse = z.infer<typeof monitoredPageListResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// Audit Execution & History API Request & Response Schemas
+// ---------------------------------------------------------------------------
+
+export const triggerAuditRequestSchema = z.object({
+  idempotencyKey: z
+    .string()
+    .trim()
+    .max(128, "Idempotency key must be 128 characters or fewer.")
+    .optional(),
+});
+export type TriggerAuditRequest = z.infer<typeof triggerAuditRequestSchema>;
+
+export const auditRunResponseSchema = z.object({
+  auditRun: auditRunSchema,
+  report: reportSchema.optional(),
+  auditReportId: z.string().uuid().optional(),
+  isIdempotentReplay: z.boolean().optional(),
+});
+export type AuditRunResponse = z.infer<typeof auditRunResponseSchema>;
+
+export const auditHistoryItemSchema = z.object({
+  id: z.string().uuid(),
+  monitoredPageId: z.string().uuid(),
+  projectId: z.string().uuid(),
+  organizationId: z.string().uuid(),
+  invocationType: invocationTypeSchema,
+  status: auditRunStatusSchema,
+  targetUrl: z.string(),
+  finalUrl: z.string().nullable().optional(),
+  overallScore: z.number().int().min(0).max(100).nullable().optional(),
+  scoreConfidence: scoreConfidenceSchema.nullable().optional(),
+  summary: z.string().nullable().optional(),
+  auditReportId: z.string().uuid().nullable().optional(),
+  startedAt: z.string().nullable().optional(),
+  completedAt: z.string().nullable().optional(),
+  failedAt: z.string().nullable().optional(),
+  errorCode: z.string().nullable().optional(),
+  errorMessage: z.string().nullable().optional(),
+  retryable: z.boolean().nullable().optional(),
+  modelVersion: z.string(),
+  checkVersion: z.string(),
+  scoringVersion: z.string(),
+  createdAt: z.string(),
+});
+export type AuditHistoryItem = z.infer<typeof auditHistoryItemSchema>;
+
+export const auditHistoryListResponseSchema = z.object({
+  audits: z.array(auditHistoryItemSchema),
+  total: z.number().int().min(0),
+});
+export type AuditHistoryListResponse = z.infer<typeof auditHistoryListResponseSchema>;
+
+export const persistedAuditReportResponseSchema = z.object({
+  auditRun: auditRunSchema,
+  report: auditReportSchema,
+  scoreSnapshots: z.array(scoreSnapshotSchema),
+  findings: z.array(findingEntitySchema),
+  recommendations: z.array(recommendationEntitySchema),
+});
+export type PersistedAuditReportResponse = z.infer<
+  typeof persistedAuditReportResponseSchema
+>;
 

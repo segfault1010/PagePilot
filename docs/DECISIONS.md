@@ -151,3 +151,30 @@ To implement persistent Projects and Monitored Pages for authenticated growth te
 - **Web API Client Token Handling**:
   - Web client API helpers (`apps/web/src/features/projects/api.ts`) automatically obtain the active Supabase session token via `getSupabaseClient().auth.getSession()` and attach `Authorization: Bearer <token>`, eliminating manual header construction for callers.
 
+## D46 — Historical Audit Report Persistence, Atomic Database RPC, Concurrent Idempotency, and Last Successful Report Semantics (Milestone 2)
+
+To connect the `@pagepilot/audit-engine` analysis pipeline to authenticated, tenant-scoped persistent storage while maintaining strict multi-tenant isolation, historical immutability, and anonymous audit stability:
+- **Audit Persistence Architecture**:
+  - Introduced `AuditPersistenceStore` interface (`apps/api/src/audits/audit-store.ts`) and `SupabaseAuditPersistenceStore` executing queries with the user's verified session token (`auth.uid() = req.user.id`).
+  - Introduced `AuditService` (`apps/api/src/audits/audit-service.ts`) orchestrating run lifecycle, safe execution of `@pagepilot/audit-engine`, and atomic persistence.
+  - Mounted audit endpoints under `/api/projects/:projectId/pages/:pageId/audits` (`apps/api/src/audits/routes.ts`).
+- **Atomic Report Persistence via PostgreSQL RPC**:
+  - Migration `20260827140000_audit_persistence_and_idempotency.sql` introduces PostgreSQL stored function `public.persist_completed_audit_report(...)`.
+  - The function runs in a single transaction to update `audit_runs` to `completed`, insert `audit_reports`, batch-insert `score_snapshots` (7 categories), batch-insert `findings` (top problems + category findings), batch-insert `recommendations` (quick wins + detailed), and update `monitored_pages` pointers.
+  - All rows commit together or roll back on error, guaranteeing zero partial persistence states.
+- **Concurrent Idempotency Conflict Resolution**:
+  - Added unique partial index `uq_audit_runs_idempotency` ON `public.audit_runs(monitored_page_id, idempotency_key) WHERE idempotency_key IS NOT NULL`.
+  - When concurrent requests with the same idempotency key arrive, the losing request catches Postgres constraint violation `23505`, fetches the existing run/report, and avoids re-executing analysis or creating duplicate records.
+- **Distinct HTTP Statuses for Idempotency**:
+  - Newly executed and persisted manual audits return `201 Created`.
+  - Idempotent requests finding an already-completed report return `200 OK` with the existing report payload.
+- **Latest Successful Audit Semantics**:
+  - `monitored_pages` maintains distinct pointers: `latest_audit_run_id` (most recent run of any status) and `latest_successful_audit_run_id` (most recent completed run).
+  - When an audit fails, `latest_audit_run_id` is updated, but **`latest_successful_audit_run_id` remains unchanged**, preserving the last valid historical report for monitoring and history queries.
+- **Historical Immutability & Version Preservation**:
+  - RLS policies disallow `UPDATE` operations on `audit_reports`, `score_snapshots`, and `recommendations`.
+  - Every persisted report stores frozen version metadata (`schema_version = "1.0.0"`, `check_version = "1.0.0"`, `prompt_version = "1.0.0"`, `scoring_version = "1.0.0"`, and `model_identifier`).
+- **Anonymous MVP Audit Unchanged**:
+  - `POST /api/analyze` remains open, unauthenticated, stateless, and verified live with `pnpm run verify:gemini`.
+
+

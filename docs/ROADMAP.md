@@ -87,8 +87,15 @@ This roadmap defines the evolution of PagePilot from a single-project MVP into a
     - Clear separation between URL security policy (`enforceUrlPolicy`) and domain metadata canonicalization (`normalizeDomain`).
     - Web API client (`apps/web/src/features/projects/api.ts`) with automatic session token attachment.
     - Manipulated ID and cross-tenant isolation protection (safe 404 behavior).
-  - **Task 2.4 — Historical Audit Report Persistence & Association (`Next`)**:
-    - Persist audit runs, immutable reports, score snapshots, and findings linked to monitored pages.
+  - **Task 2.4 — Historical Audit Report Persistence & Association (`Complete & Verified`)**:
+    - Persist complete audit aggregate (`audit_runs`, `audit_reports`, 7 `score_snapshots`, `findings`, `recommendations`) atomically via database RPC function (`persist_completed_audit_report`).
+    - Handled concurrent idempotency conflict (Postgres 23505 unique constraint catch) returning existing run without duplicate execution.
+    - Implemented distinct HTTP status semantics: `201 Created` for newly executed audits; `200 OK` for idempotent replayed runs.
+    - Preserved `latest_successful_audit_run_id` on audit failure while updating `latest_audit_run_id`.
+    - Enforced historical report immutability via RLS (no `UPDATE` on reports/snapshots/recommendations).
+    - Web client API helpers (`apps/web/src/features/audits/api.ts`) with automatic session token injection.
+  - **Task 2.5 — Workspace UI, Projects & Monitored Page Management (`Next`)**:
+    - Build authenticated project and monitored page dashboard and historical audit view in frontend.
 - **Must Include:**
   - Supabase Auth (Email / Password / Magic Link).
   - Multi-tenant data model: `organization`, `membership`, `profile`, `project`, `monitored_page`, `audit_run`, `audit_report`.

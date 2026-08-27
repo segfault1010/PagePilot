@@ -168,5 +168,19 @@ describe("Supabase Multi-Tenant SQL Migration Validation", () => {
     expect(uniquenessSql).toContain("uq_monitored_pages_project_url");
     expect(uniquenessSql).toMatch(/CREATE\s+UNIQUE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+uq_monitored_pages_project_url\s+ON\s+public\.monitored_pages\s*\(\s*project_id\s*,\s*canonical_url\s*\)/i);
   });
+
+  it("defines latest_successful_audit_run_id, idempotency_key, and persist_completed_audit_report RPC in migration", () => {
+    const auditMigrationPath = resolve(
+      process.cwd(),
+      "supabase/migrations/20260827140000_audit_persistence_and_idempotency.sql",
+    );
+    const auditSql = readFileSync(auditMigrationPath, "utf-8");
+    expect(auditSql).toContain("latest_successful_audit_run_id");
+    expect(auditSql).toContain("idempotency_key");
+    expect(auditSql).toContain("uq_audit_runs_idempotency");
+    expect(auditSql).toContain("persist_completed_audit_report");
+    expect(auditSql).toMatch(/CREATE\s+UNIQUE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+uq_audit_runs_idempotency\s+ON\s+public\.audit_runs\s*\(\s*monitored_page_id\s*,\s*idempotency_key\s*\)/i);
+    expect(auditSql).toMatch(/FUNCTION\s+public\.persist_completed_audit_report/i);
+  });
 });
 
