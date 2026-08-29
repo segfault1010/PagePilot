@@ -390,4 +390,235 @@ describe("SupabaseWorkflowPersistenceStore", () => {
     expect(result.isExisting).toBe(true);
     expect(result.run.id).toBe("run-scheduled-existing");
   });
+
+  it("getPreviousSuccessfulAuditReport returns report payload from latest report", async () => {
+    const mockClient = {
+      from: vi.fn((table: string) => {
+        expect(table).toBe("audit_reports");
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          order: vi.fn().mockReturnThis(),
+          neq: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockReturnThis(),
+          maybeSingle: vi.fn().mockResolvedValue({
+            data: { report_payload: sampleReport },
+            error: null,
+          }),
+        };
+      }),
+    } as any;
+
+    const store = new SupabaseWorkflowPersistenceStore(mockClient);
+    const report = await store.getPreviousSuccessfulAuditReport(
+      orgId,
+      projectId,
+      pageId,
+      runId,
+    );
+
+    expect(report).not.toBeNull();
+    expect(report?.overallScore).toBe(sampleReport.overallScore);
+  });
+
+  it("persistAlert inserts new alert and handles 24-hour suppression for identical ongoing conditions", async () => {
+    const rawAlertRow = {
+      id: "alert-1",
+      organization_id: orgId,
+      project_id: projectId,
+      monitored_page_id: pageId,
+      audit_run_id: runId,
+      rule_type: "overall_score_drop",
+      severity: "high",
+      title: "Overall UX Score Regressed",
+      reason_code: "SCORE_DROP_EXCEEDED",
+      reason_summary: "Score dropped by 15 pts.",
+      reason_details: null,
+      category: null,
+      target_id: null,
+      score_delta: -15,
+      previous_value: "80",
+      current_value: "65",
+      deduplication_key: `alert:${pageId}:overall_score_drop`,
+      schema_version: "1.0.0",
+      status: "created",
+      metadata: {},
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    let selectCallCount = 0;
+    const mockClient = {
+      from: vi.fn((table: string) => {
+        expect(table).toBe("alerts");
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          gte: vi.fn().mockReturnThis(),
+          order: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockReturnThis(),
+          maybeSingle: vi.fn().mockImplementation(async () => {
+            selectCallCount++;
+            if (selectCallCount === 1) {
+              // First call: no recent alert found
+              return { data: null, error: null };
+            } else {
+              // Second call: recent alert found
+              return { data: rawAlertRow, error: null };
+            }
+          }),
+          insert: vi.fn().mockReturnValue({
+            select: vi.fn().mockReturnValue({
+              single: vi.fn().mockResolvedValue({ data: rawAlertRow, error: null }),
+            }),
+          }),
+        };
+      }),
+    } as any;
+
+    const store = new SupabaseWorkflowPersistenceStore(mockClient);
+
+    // First call: fresh alert insertion
+    const firstResult = await store.persistAlert({
+      organizationId: orgId,
+      projectId,
+      monitoredPageId: pageId,
+      auditRunId: runId,
+      ruleType: "overall_score_drop",
+      severity: "high",
+      title: "Overall UX Score Regressed",
+      reasonCode: "SCORE_DROP_EXCEEDED",
+      reasonSummary: "Score dropped by 15 pts.",
+      deduplicationKey: `alert:${pageId}:overall_score_drop`,
+      scoreDelta: -15,
+      previousValue: "80",
+      currentValue: "65",
+      schemaVersion: "1.0.0",
+      status: "created",
+      metadata: {},
+    });
+
+    expect(firstResult.isSuppressed).toBe(false);
+    expect(firstResult.isExisting).toBe(false);
+    expect(firstResult.alert.id).toBe("alert-1");
+
+    // Second call: identical ongoing regression condition within 24h is suppressed
+    const secondResult = await store.persistAlert({
+      organizationId: orgId,
+      projectId,
+      monitoredPageId: pageId,
+      auditRunId: "another-run-id",
+      ruleType: "overall_score_drop",
+      severity: "high",
+      title: "Overall UX Score Regressed",
+      reasonCode: "SCORE_DROP_EXCEEDED",
+      reasonSummary: "Score dropped by 15 pts.",
+      deduplicationKey: `alert:${pageId}:overall_score_drop`,
+      scoreDelta: -15,
+      previousValue: "80",
+      currentValue: "65",
+      schemaVersion: "1.0.0",
+      status: "created",
+      metadata: {},
+    });
+
+    expect(secondResult.isSuppressed).toBe(true);
+    expect(secondResult.isExisting).toBe(false);
+  });
+
+  it("listOrganizationRecipients returns owner and admin emails", async () => {
+    const mockClient = {
+      from: vi.fn((table: string) => {
+        expect(table).toBe("memberships");
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          in: vi.fn().mockResolvedValue({
+            data: [
+              { user_id: "user-1", role: "owner", profiles: { email: "owner@test.com" } },
+              { user_id: "user-2", role: "admin", profiles: { email: "admin@test.com" } },
+            ],
+            error: null,
+          }),
+        };
+      }),
+    } as any;
+
+    const store = new SupabaseWorkflowPersistenceStore(mockClient);
+    const recipients = await store.listOrganizationRecipients(orgId);
+
+    expect(recipients).toHaveLength(2);
+    expect(recipients[0]?.email).toBe("owner@test.com");
+    expect(recipients[1]?.role).toBe("admin");
+  });
+
+  it("getOrCreateDelivery creates delivery record and handles conflict idempotently", async () => {
+    const rawDeliveryRow = {
+      id: "del-1",
+      alert_id: "alert-1",
+      organization_id: orgId,
+      channel: "email",
+      recipient: "admin@test.com",
+      delivery_key: "alert-1:email:admin@test.com",
+      status: "pending",
+      attempts: 0,
+      metadata: {},
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    let findCalled = false;
+    const mockClient = {
+      from: vi.fn((table: string) => {
+        expect(table).toBe("alert_deliveries");
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          maybeSingle: vi.fn().mockImplementation(async () => {
+            if (!findCalled) {
+              findCalled = true;
+              return { data: null, error: null };
+            }
+            return { data: rawDeliveryRow, error: null };
+          }),
+          insert: vi.fn().mockReturnValue({
+            select: vi.fn().mockReturnValue({
+              single: vi.fn().mockResolvedValue({ data: rawDeliveryRow, error: null }),
+            }),
+          }),
+        };
+      }),
+    } as any;
+
+    const store = new SupabaseWorkflowPersistenceStore(mockClient);
+
+    const first = await store.getOrCreateDelivery({
+      alertId: "alert-1",
+      organizationId: orgId,
+      channel: "email",
+      recipient: "admin@test.com",
+      deliveryKey: "alert-1:email:admin@test.com",
+      status: "pending",
+      attempts: 0,
+      metadata: {},
+    });
+
+    expect(first.isExisting).toBe(false);
+    expect(first.delivery.deliveryKey).toBe("alert-1:email:admin@test.com");
+
+    const second = await store.getOrCreateDelivery({
+      alertId: "alert-1",
+      organizationId: orgId,
+      channel: "email",
+      recipient: "admin@test.com",
+      deliveryKey: "alert-1:email:admin@test.com",
+      status: "pending",
+      attempts: 0,
+      metadata: {},
+    });
+
+    expect(second.isExisting).toBe(true);
+    expect(second.delivery.id).toBe("del-1");
+  });
 });
+

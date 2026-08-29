@@ -6,9 +6,13 @@ import {
   REPORT_SCHEMA_VERSION,
 } from "@pagepilot/contracts";
 import type {
+  AlertDeliveryEntity,
+  AlertEntity,
+  AlertStatus,
   AuditRun,
   MonitoredPage,
   Report,
+  Role,
 } from "@pagepilot/contracts";
 import type {
   ClaimRunResult,
@@ -62,6 +66,61 @@ function mapMonitoredPageRow(row: any): MonitoredPage {
     tags: Array.isArray(row.tags) ? row.tags : [],
     latestAuditRunId: row.latest_audit_run_id ?? null,
     latestSuccessfulAuditRunId: row.latest_successful_audit_run_id ?? null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapAlertRow(row: any): AlertEntity {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    projectId: row.project_id,
+    monitoredPageId: row.monitored_page_id,
+    auditRunId: row.audit_run_id ?? null,
+    ruleType: row.rule_type,
+    severity: row.severity,
+    title: row.title,
+    reasonCode: row.reason_code,
+    reasonSummary: row.reason_summary,
+    reasonDetails: row.reason_details ?? null,
+    category: row.category ?? null,
+    targetId: row.target_id ?? null,
+    scoreDelta:
+      row.score_delta !== null && row.score_delta !== undefined
+        ? Number(row.score_delta)
+        : null,
+    previousValue: row.previous_value ?? null,
+    currentValue: row.current_value ?? null,
+    deduplicationKey: row.deduplication_key,
+    schemaVersion: row.schema_version ?? "1.0.0",
+    status: row.status ?? "created",
+    metadata:
+      typeof row.metadata === "object" && row.metadata !== null
+        ? row.metadata
+        : {},
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapDeliveryRow(row: any): AlertDeliveryEntity {
+  return {
+    id: row.id,
+    alertId: row.alert_id,
+    organizationId: row.organization_id,
+    channel: row.channel ?? "email",
+    recipient: row.recipient,
+    deliveryKey: row.delivery_key,
+    status: row.status ?? "pending",
+    attempts: row.attempts ?? 0,
+    lastAttemptedAt: row.last_attempted_at ?? null,
+    deliveredAt: row.delivered_at ?? null,
+    errorMessage: row.error_message ?? null,
+    metadata:
+      typeof row.metadata === "object" && row.metadata !== null
+        ? row.metadata
+        : {},
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -419,4 +478,307 @@ export class SupabaseWorkflowPersistenceStore implements WorkflowPersistenceStor
       .eq("id", pageId)
       .eq("organization_id", orgId);
   }
+
+  async getPreviousSuccessfulAuditReport(
+    orgId: string,
+    _projectId: string,
+    pageId: string,
+    currentRunId?: string,
+  ): Promise<Report | null> {
+    let query = this.client
+      .from("audit_reports")
+      .select("report_payload, created_at, audit_run_id")
+      .eq("organization_id", orgId)
+      .eq("monitored_page_id", pageId)
+      .order("created_at", { ascending: false });
+
+    if (currentRunId) {
+      query = query.neq("audit_run_id", currentRunId);
+    }
+
+    const { data, error } = await query.limit(1).maybeSingle();
+
+    if (error || !data) return null;
+    return data.report_payload as Report;
+  }
+
+  async findRecentAlert(
+    monitoredPageId: string,
+    deduplicationKey: string,
+    withinHours = 24,
+  ): Promise<AlertEntity | null> {
+    const cutoff = new Date(
+      Date.now() - withinHours * 60 * 60 * 1000,
+    ).toISOString();
+
+    const { data, error } = await this.client
+      .from("alerts")
+      .select("*")
+      .eq("monitored_page_id", monitoredPageId)
+      .eq("deduplication_key", deduplicationKey)
+      .gte("created_at", cutoff)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error || !data) return null;
+    return mapAlertRow(data);
+  }
+
+  async persistAlert(
+    alert: Omit<AlertEntity, "id" | "createdAt" | "updatedAt">,
+  ): Promise<{ alert: AlertEntity; isExisting: boolean; isSuppressed: boolean }> {
+    const now = new Date().toISOString();
+
+    // 1. State-aware 24-hour suppression check
+    const recent = await this.findRecentAlert(
+      alert.monitoredPageId,
+      alert.deduplicationKey,
+      24,
+    );
+
+    if (recent) {
+      // If the identical ongoing regression was already alerted within 24h, suppress noise
+      const isIdenticalOngoing =
+        String(recent.currentValue ?? "") ===
+          String(alert.currentValue ?? "") &&
+        String(recent.previousValue ?? "") ===
+          String(alert.previousValue ?? "") &&
+        Number(recent.scoreDelta ?? 0) === Number(alert.scoreDelta ?? 0);
+
+      if (isIdenticalOngoing) {
+        return {
+          alert: recent,
+          isExisting: false,
+          isSuppressed: true,
+        };
+      }
+    }
+
+    // 2. Insert new alert into PostgreSQL
+    const { data: inserted, error: insertError } = await this.client
+      .from("alerts")
+      .insert({
+        organization_id: alert.organizationId,
+        project_id: alert.projectId,
+        monitored_page_id: alert.monitoredPageId,
+        audit_run_id: alert.auditRunId ?? null,
+        rule_type: alert.ruleType,
+        severity: alert.severity,
+        title: alert.title,
+        reason_code: alert.reasonCode,
+        reason_summary: alert.reasonSummary,
+        reason_details: alert.reasonDetails ?? null,
+        category: alert.category ?? null,
+        target_id: alert.targetId ?? null,
+        score_delta: alert.scoreDelta ?? null,
+        previous_value:
+          alert.previousValue !== undefined && alert.previousValue !== null
+            ? String(alert.previousValue)
+            : null,
+        current_value:
+          alert.currentValue !== undefined && alert.currentValue !== null
+            ? String(alert.currentValue)
+            : null,
+        deduplication_key: alert.deduplicationKey,
+        schema_version: alert.schemaVersion ?? "1.0.0",
+        status: alert.status ?? "created",
+        metadata: alert.metadata ?? {},
+        created_at: now,
+        updated_at: now,
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      // Check for unique constraint violation on (audit_run_id, deduplication_key)
+      if (
+        (insertError.code === "23505" ||
+          insertError.message?.includes("uq_alerts_run_dedup")) &&
+        alert.auditRunId
+      ) {
+        const { data: existing } = await this.client
+          .from("alerts")
+          .select("*")
+          .eq("audit_run_id", alert.auditRunId)
+          .eq("deduplication_key", alert.deduplicationKey)
+          .single();
+
+        if (existing) {
+          return {
+            alert: mapAlertRow(existing),
+            isExisting: true,
+            isSuppressed: false,
+          };
+        }
+      }
+      throw insertError;
+    }
+
+    return {
+      alert: mapAlertRow(inserted),
+      isExisting: false,
+      isSuppressed: false,
+    };
+  }
+
+  async getAlert(alertId: string): Promise<AlertEntity | null> {
+    const { data, error } = await this.client
+      .from("alerts")
+      .select("*")
+      .eq("id", alertId)
+      .maybeSingle();
+
+    if (error || !data) return null;
+    return mapAlertRow(data);
+  }
+
+  async updateAlertStatus(
+    alertId: string,
+    status: AlertStatus,
+    metadata?: Record<string, unknown>,
+  ): Promise<void> {
+    const now = new Date().toISOString();
+    const updatePayload: any = {
+      status,
+      updated_at: now,
+    };
+    if (metadata) {
+      updatePayload.metadata = metadata;
+    }
+
+    await this.client.from("alerts").update(updatePayload).eq("id", alertId);
+  }
+
+  async listOrganizationRecipients(
+    orgId: string,
+  ): Promise<Array<{ id: string; email: string; role: Role }>> {
+    const { data, error } = await this.client
+      .from("memberships")
+      .select("user_id, role, profiles(email)")
+      .eq("organization_id", orgId)
+      .in("role", ["owner", "admin"]);
+
+    if (error || !data) return [];
+
+    return data
+      .filter((row: any) => row.profiles?.email)
+      .map((row: any) => ({
+        id: row.user_id,
+        email: row.profiles.email,
+        role: row.role as Role,
+      }));
+  }
+
+  async getOrCreateDelivery(
+    delivery: Omit<AlertDeliveryEntity, "id" | "createdAt" | "updatedAt">,
+  ): Promise<{ delivery: AlertDeliveryEntity; isExisting: boolean }> {
+    const now = new Date().toISOString();
+
+    // 1. Check existing by delivery_key
+    const { data: existing, error: findError } = await this.client
+      .from("alert_deliveries")
+      .select("*")
+      .eq("delivery_key", delivery.deliveryKey)
+      .maybeSingle();
+
+    if (existing && !findError) {
+      return {
+        delivery: mapDeliveryRow(existing),
+        isExisting: true,
+      };
+    }
+
+    // 2. Insert delivery record
+    const { data: inserted, error: insertError } = await this.client
+      .from("alert_deliveries")
+      .insert({
+        alert_id: delivery.alertId,
+        organization_id: delivery.organizationId,
+        channel: delivery.channel ?? "email",
+        recipient: delivery.recipient,
+        delivery_key: delivery.deliveryKey,
+        status: delivery.status ?? "pending",
+        attempts: delivery.attempts ?? 0,
+        metadata: delivery.metadata ?? {},
+        created_at: now,
+        updated_at: now,
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      if (
+        insertError.code === "23505" ||
+        insertError.message?.includes("uq_alert_deliveries_key")
+      ) {
+        const { data: conflictRecord } = await this.client
+          .from("alert_deliveries")
+          .select("*")
+          .eq("delivery_key", delivery.deliveryKey)
+          .single();
+
+        if (conflictRecord) {
+          return {
+            delivery: mapDeliveryRow(conflictRecord),
+            isExisting: true,
+          };
+        }
+      }
+      throw insertError;
+    }
+
+    return {
+      delivery: mapDeliveryRow(inserted),
+      isExisting: false,
+    };
+  }
+
+  async recordDeliverySuccess(
+    deliveryId: string,
+    metadata?: Record<string, unknown>,
+  ): Promise<void> {
+    const now = new Date().toISOString();
+    const updatePayload: any = {
+      status: "delivered",
+      delivered_at: now,
+      last_attempted_at: now,
+      updated_at: now,
+    };
+    if (metadata) {
+      updatePayload.metadata = metadata;
+    }
+
+    await this.client
+      .from("alert_deliveries")
+      .update(updatePayload)
+      .eq("id", deliveryId);
+  }
+
+  async recordDeliveryFailure(
+    deliveryId: string,
+    errorMessage: string,
+    isPermanent: boolean,
+  ): Promise<void> {
+    const now = new Date().toISOString();
+    const { data: current } = await this.client
+      .from("alert_deliveries")
+      .select("attempts")
+      .eq("id", deliveryId)
+      .maybeSingle();
+
+    const attempts = (current?.attempts ?? 0) + 1;
+
+    await this.client
+      .from("alert_deliveries")
+      .update({
+        status: isPermanent ? "failed" : "pending",
+        error_message: errorMessage,
+        attempts,
+        last_attempted_at: now,
+        updated_at: now,
+      })
+      .eq("id", deliveryId);
+  }
 }
+

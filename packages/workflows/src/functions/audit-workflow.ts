@@ -1,11 +1,14 @@
 import { NonRetriableError } from "inngest";
 import {
+  ALERT_CREATED_EVENT,
   AUDIT_REQUESTED_EVENT,
   auditRequestedPayloadSchema,
 } from "@pagepilot/contracts";
-import { analyzeTarget } from "@pagepilot/audit-engine";
+import type { AlertCreatedEvent } from "@pagepilot/contracts";
+import { analyzeTarget, computeAuditDiff } from "@pagepilot/audit-engine";
 import { inngestClient } from "../client.js";
 import type { WorkflowDeps } from "../types.js";
+import { evaluateAuditAlerts } from "../alerts/alert-evaluation.js";
 
 /**
  * Creates the durable background audit execution workflow with injectable dependencies.
@@ -194,13 +197,110 @@ export function createAuditWorkflow(deps: WorkflowDeps) {
         }
       });
 
+      // -----------------------------------------------------------------------
+      // Step 4: Evaluate regressions and dispatch alert notifications
+      // -----------------------------------------------------------------------
+      const alertOutcome = await step.run("evaluate-and-dispatch-alerts", async () => {
+        if (!analysisResult.ok) {
+          return { dispatchedAlertsCount: 0 };
+        }
+
+        // 1. Fetch previous successful audit report (excluding current run)
+        const previousReport =
+          await deps.auditStore.getPreviousSuccessfulAuditReport(
+            claimResult.orgId,
+            claimResult.projectId,
+            claimResult.pageId,
+            claimResult.runId,
+          );
+
+        // 2. Compute pure deterministic regression diff
+        const diff = computeAuditDiff({
+          previousReport,
+          currentReport: analysisResult.report,
+        });
+
+        // 3. Pure alert evaluation
+        const evaluation = evaluateAuditAlerts(diff, {
+          organizationId: claimResult.orgId,
+          projectId: claimResult.projectId,
+          monitoredPageId: claimResult.pageId,
+          auditRunId: claimResult.runId,
+          consecutiveFailureCount: 0,
+          evaluatedAt: new Date().toISOString(),
+        });
+
+        if (!evaluation.hasAlerts || evaluation.decisions.length === 0) {
+          return { dispatchedAlertsCount: 0 };
+        }
+
+        let dispatchedCount = 0;
+        const eventsToEmit: AlertCreatedEvent[] = [];
+
+        // 4. Persist alerts with state-aware 24-hour suppression & deduplication
+        for (const decision of evaluation.decisions) {
+          const { alert, isExisting, isSuppressed } =
+            await deps.auditStore.persistAlert({
+              organizationId: claimResult.orgId,
+              projectId: claimResult.projectId,
+              monitoredPageId: claimResult.pageId,
+              auditRunId: claimResult.runId,
+              ruleType: decision.ruleType,
+              severity: decision.severity,
+              title: decision.title,
+              reasonCode: decision.reason.code,
+              reasonSummary: decision.reason.summary,
+              reasonDetails: decision.reason.details ?? null,
+              category: decision.category ?? null,
+              targetId: decision.targetId ?? null,
+              scoreDelta: decision.scoreDelta ?? null,
+              previousValue:
+                decision.previousValue !== undefined
+                  ? String(decision.previousValue)
+                  : null,
+              currentValue:
+                decision.currentValue !== undefined
+                  ? String(decision.currentValue)
+                  : null,
+              deduplicationKey: decision.deduplicationKey,
+              schemaVersion: decision.schemaVersion,
+              status: "created",
+              metadata: decision.metadata ?? {},
+            });
+
+          // If freshly created (not duplicate and not suppressed by 24h window), queue event
+          if (!isExisting && !isSuppressed) {
+            eventsToEmit.push({
+              name: ALERT_CREATED_EVENT,
+              data: {
+                alertId: alert.id,
+                organizationId: alert.organizationId,
+                projectId: alert.projectId,
+                monitoredPageId: alert.monitoredPageId,
+                auditRunId: alert.auditRunId ?? null,
+              },
+            });
+            dispatchedCount++;
+          }
+        }
+
+        // 5. Emit Inngest delivery events
+        if (eventsToEmit.length > 0 && client.send) {
+          await client.send(eventsToEmit);
+        }
+
+        return { dispatchedAlertsCount: dispatchedCount };
+      });
+
       return {
         ok: true,
         runId: claimResult.runId,
         status: persistResult.status,
         auditReportId: persistResult.auditReportId,
         overallScore: persistResult.overallScore,
+        dispatchedAlertsCount: alertOutcome.dispatchedAlertsCount,
       };
     },
   );
 }
+

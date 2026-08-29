@@ -182,5 +182,37 @@ describe("Supabase Multi-Tenant SQL Migration Validation", () => {
     expect(auditSql).toMatch(/CREATE\s+UNIQUE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+uq_audit_runs_idempotency\s+ON\s+public\.audit_runs\s*\(\s*monitored_page_id\s*,\s*idempotency_key\s*\)/i);
     expect(auditSql).toMatch(/FUNCTION\s+public\.persist_completed_audit_report/i);
   });
+
+  it("defines alerts and alert_deliveries tables with RLS and uniqueness constraints in migration", () => {
+    const alertsMigrationPath = resolve(
+      process.cwd(),
+      "supabase/migrations/20260829120000_alerts_and_delivery.sql",
+    );
+    const alertsSql = readFileSync(alertsMigrationPath, "utf-8");
+
+    expect(alertsSql).toContain("CREATE TABLE IF NOT EXISTS public.alerts");
+    expect(alertsSql).toContain("CREATE TABLE IF NOT EXISTS public.alert_deliveries");
+
+    // Indexes & uniqueness
+    expect(alertsSql).toContain("uq_alerts_run_dedup");
+    expect(alertsSql).toContain("idx_alerts_monitored_page_dedup");
+    expect(alertsSql).toContain("uq_alert_deliveries_key");
+
+    // RLS enabled and forced
+    expect(alertsSql).toContain("ALTER TABLE public.alerts ENABLE ROW LEVEL SECURITY;");
+    expect(alertsSql).toContain("ALTER TABLE public.alerts FORCE ROW LEVEL SECURITY;");
+    expect(alertsSql).toContain("ALTER TABLE public.alert_deliveries ENABLE ROW LEVEL SECURITY;");
+    expect(alertsSql).toContain("ALTER TABLE public.alert_deliveries FORCE ROW LEVEL SECURITY;");
+
+    // RLS policies
+    expect(alertsSql).toContain("alerts_select_policy");
+    expect(alertsSql).toContain("alerts_insert_policy");
+    expect(alertsSql).toContain("alerts_update_policy");
+    expect(alertsSql).toContain("alerts_delete_policy");
+    expect(alertsSql).toContain("alert_deliveries_select_policy");
+    expect(alertsSql).toContain("alert_deliveries_insert_policy");
+    expect(alertsSql).toContain("alert_deliveries_update_policy");
+    expect(alertsSql).toContain("alert_deliveries_delete_policy");
+  });
 });
 

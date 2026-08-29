@@ -12,6 +12,7 @@ import type {
   Report,
 } from "@pagepilot/contracts";
 import { createAuditWorkflow } from "../src/functions/audit-workflow.js";
+import { inngestClient } from "../src/client.js";
 import type {
   ClaimRunResult,
   WorkflowPersistenceStore,
@@ -155,6 +156,22 @@ describe("Durable Audit Workflow (execute-audit-workflow)", () => {
         auditReportId: "550e8400-e29b-41d4-a716-446655440005",
       })),
       recordRunFailure: vi.fn(async () => {}),
+      getPreviousSuccessfulAuditReport: vi.fn(async () => null),
+      findRecentAlert: vi.fn(async () => null),
+      persistAlert: vi.fn(async () => ({
+        alert: { id: "alert-123" } as any,
+        isExisting: false,
+        isSuppressed: false,
+      })),
+      getAlert: vi.fn(async () => null),
+      updateAlertStatus: vi.fn(async () => {}),
+      listOrganizationRecipients: vi.fn(async () => []),
+      getOrCreateDelivery: vi.fn(async () => ({
+        delivery: { id: "del-1" } as any,
+        isExisting: false,
+      })),
+      recordDeliverySuccess: vi.fn(async () => {}),
+      recordDeliveryFailure: vi.fn(async () => {}),
       ...overrides,
     };
   }
@@ -403,5 +420,117 @@ describe("Durable Audit Workflow (execute-audit-workflow)", () => {
       expect((parse.data as any).rawHtml).toBeUndefined();
       expect((parse.data as any).secret).toBeUndefined();
     }
+  });
+
+  it("evaluates regression vs previous report and dispatches alert/created event", async () => {
+    const previousSuccessfulReport: Report = {
+      ...sampleReport,
+      overallScore: 85,
+    };
+    const regressedReport: Report = {
+      ...sampleReport,
+      overallScore: 65, // -20 pts drop (>= 10 pts meaningful drop)
+    };
+
+    const persistedAlert = {
+      id: "alert-123",
+      organizationId: orgId,
+      projectId: projectId,
+      monitoredPageId: pageId,
+      auditRunId: runId,
+      ruleType: "overall_score_drop" as const,
+      severity: "high" as const,
+      title: "Overall UX Score Regressed",
+      reasonCode: "SCORE_DROP_EXCEEDED" as const,
+      reasonSummary: "Overall score dropped by 20 points.",
+      deduplicationKey: `alert:${pageId}:overall_score_drop`,
+      schemaVersion: "1.0.0",
+      status: "created" as const,
+      metadata: {},
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const mockClientSend = vi.fn().mockResolvedValue(undefined);
+    const mockClient = {
+      createFunction: inngestClient.createFunction.bind(inngestClient),
+      send: mockClientSend,
+    };
+    const mockStore = createMockStore({
+      getPreviousSuccessfulAuditReport: vi.fn().mockResolvedValue(previousSuccessfulReport),
+      persistAlert: vi.fn().mockResolvedValue({
+        alert: persistedAlert,
+        isExisting: false,
+        isSuppressed: false,
+      }),
+    });
+
+    const workflow = createAuditWorkflow({
+      auditStore: mockStore,
+      analyzeUrl: vi.fn().mockResolvedValue({ ok: true, report: regressedReport }),
+      client: mockClient as any,
+    });
+
+    const mockStep = createMockStep();
+    const result = await (workflow as any)["fn"]({ event: validEvent, step: mockStep });
+
+    expect(result.ok).toBe(true);
+    expect(result.dispatchedAlertsCount).toBeGreaterThan(0);
+    expect(mockStore.persistAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ruleType: "overall_score_drop",
+        severity: "high",
+      }),
+    );
+    expect(mockClientSend).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "alert/created",
+          data: expect.objectContaining({
+            alertId: "alert-123",
+            organizationId: orgId,
+            monitoredPageId: pageId,
+          }),
+        }),
+      ]),
+    );
+  });
+
+  it("suppresses alert/created dispatch when alert is suppressed within 24-hour window", async () => {
+    const previousSuccessfulReport: Report = {
+      ...sampleReport,
+      overallScore: 85,
+    };
+    const regressedReport: Report = {
+      ...sampleReport,
+      overallScore: 65,
+    };
+
+    const mockClientSend = vi.fn().mockResolvedValue(undefined);
+    const mockClient = {
+      createFunction: inngestClient.createFunction.bind(inngestClient),
+      send: mockClientSend,
+    };
+    const mockStore = createMockStore({
+      getPreviousSuccessfulAuditReport: vi.fn().mockResolvedValue(previousSuccessfulReport),
+      persistAlert: vi.fn().mockResolvedValue({
+        alert: { id: "alert-123" } as any,
+        isExisting: false,
+        isSuppressed: true, // Suppressed!
+      }),
+    });
+
+    const workflow = createAuditWorkflow({
+      auditStore: mockStore,
+      analyzeUrl: vi.fn().mockResolvedValue({ ok: true, report: regressedReport }),
+      client: mockClient as any,
+    });
+
+    const mockStep = createMockStep();
+    const result = await (workflow as any)["fn"]({ event: validEvent, step: mockStep });
+
+    expect(result.ok).toBe(true);
+    expect(result.dispatchedAlertsCount).toBe(0);
+    expect(mockClientSend).not.toHaveBeenCalled();
   });
 });

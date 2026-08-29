@@ -7,6 +7,7 @@ export const AUDIT_REQUESTED_EVENT = "audit/requested" as const;
 export const AUDIT_COMPLETED_EVENT = "audit/completed" as const;
 export const AUDIT_FAILED_EVENT = "audit/failed" as const;
 export const AUDIT_SCHEDULE_WEEKLY_EVENT = "audit/schedule-weekly" as const;
+export const ALERT_CREATED_EVENT = "alert/created" as const;
 
 /**
  * Payload contract for the `audit/requested` event.
@@ -122,3 +123,32 @@ export const auditScheduleWeeklyEventSchema = z.object({
 export type AuditScheduleWeeklyEvent = z.infer<
   typeof auditScheduleWeeklyEventSchema
 >;
+
+/**
+ * Payload contract for the `alert/created` event.
+ */
+export const alertCreatedPayloadSchema = z.object({
+  alertId: z.string().uuid("alertId must be a valid UUID"),
+  organizationId: z.string().uuid("organizationId must be a valid UUID"),
+  projectId: z.string().uuid("projectId must be a valid UUID"),
+  monitoredPageId: z.string().uuid("monitoredPageId must be a valid UUID"),
+  auditRunId: z
+    .string()
+    .uuid("auditRunId must be a valid UUID")
+    .nullable()
+    .optional(),
+});
+
+export type AlertCreatedPayload = z.infer<typeof alertCreatedPayloadSchema>;
+
+/**
+ * Inngest event schema for `alert/created`.
+ */
+export const alertCreatedEventSchema = z.object({
+  name: z.literal(ALERT_CREATED_EVENT),
+  data: alertCreatedPayloadSchema,
+  id: z.string().optional(),
+  ts: z.number().optional(),
+});
+
+export type AlertCreatedEvent = z.infer<typeof alertCreatedEventSchema>;

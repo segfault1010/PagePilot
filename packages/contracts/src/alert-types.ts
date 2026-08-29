@@ -117,3 +117,85 @@ export const alertEvaluationResultSchema = z.object({
 export type AlertEvaluationResult = z.infer<
   typeof alertEvaluationResultSchema
 >;
+
+export const ALERT_STATUSES = [
+  "created",
+  "queued",
+  "delivered",
+  "failed",
+] as const;
+export const alertStatusSchema = z.enum(ALERT_STATUSES);
+export type AlertStatus = z.infer<typeof alertStatusSchema>;
+
+export const DELIVERY_STATUSES = [
+  "pending",
+  "delivered",
+  "failed",
+] as const;
+export const deliveryStatusSchema = z.enum(DELIVERY_STATUSES);
+export type DeliveryStatus = z.infer<typeof deliveryStatusSchema>;
+
+export const DELIVERY_CHANNELS = ["email"] as const;
+export const deliveryChannelSchema = z.enum(DELIVERY_CHANNELS);
+export type DeliveryChannel = z.infer<typeof deliveryChannelSchema>;
+
+/**
+ * Derives a deterministic delivery key for an alert delivery attempt.
+ */
+export function buildAlertDeliveryKey(
+  alertId: string,
+  channel: string,
+  recipient: string,
+): string {
+  return `${alertId}:${channel}:${recipient.toLowerCase().trim()}`;
+}
+
+/**
+ * Schema for persistent alert entity matching public.alerts table.
+ */
+export const alertEntitySchema = z.object({
+  id: z.string().uuid(),
+  organizationId: z.string().uuid(),
+  projectId: z.string().uuid(),
+  monitoredPageId: z.string().uuid(),
+  auditRunId: z.string().uuid().nullable().optional(),
+  ruleType: alertRuleTypeSchema,
+  severity: alertSeveritySchema,
+  title: z.string().min(1),
+  reasonCode: alertReasonCodeSchema,
+  reasonSummary: z.string().min(1),
+  reasonDetails: z.string().nullable().optional(),
+  category: auditCategorySchema.nullable().optional(),
+  targetId: z.string().nullable().optional(),
+  scoreDelta: z.number().nullable().optional(),
+  previousValue: z.union([z.string(), z.number()]).nullable().optional(),
+  currentValue: z.union([z.string(), z.number()]).nullable().optional(),
+  deduplicationKey: z.string().min(1),
+  schemaVersion: z.string().default(ALERT_SCHEMA_VERSION),
+  status: alertStatusSchema.default("created"),
+  metadata: z.record(z.string(), z.unknown()).default({}),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+export type AlertEntity = z.infer<typeof alertEntitySchema>;
+
+/**
+ * Schema for persistent alert delivery entity matching public.alert_deliveries table.
+ */
+export const alertDeliveryEntitySchema = z.object({
+  id: z.string().uuid(),
+  alertId: z.string().uuid(),
+  organizationId: z.string().uuid(),
+  channel: deliveryChannelSchema.default("email"),
+  recipient: z.string().min(1),
+  deliveryKey: z.string().min(1),
+  status: deliveryStatusSchema.default("pending"),
+  attempts: z.number().int().min(0).default(0),
+  lastAttemptedAt: z.string().datetime().nullable().optional(),
+  deliveredAt: z.string().datetime().nullable().optional(),
+  errorMessage: z.string().nullable().optional(),
+  metadata: z.record(z.string(), z.unknown()).default({}),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+export type AlertDeliveryEntity = z.infer<typeof alertDeliveryEntitySchema>;

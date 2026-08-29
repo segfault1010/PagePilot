@@ -45,9 +45,25 @@ describe("Inngest Serve Endpoint (/api/inngest)", () => {
     claimRunForExecution: async () => ({ state: "not_found" }),
     persistCompletedAudit: async () => ({ auditReportId: "id" }),
     recordRunFailure: async () => {},
+    getPreviousSuccessfulAuditReport: async () => null,
+    findRecentAlert: async () => null,
+    persistAlert: async () => ({
+      alert: { id: "alert-1" } as any,
+      isExisting: false,
+      isSuppressed: false,
+    }),
+    getAlert: async () => null,
+    updateAlertStatus: async () => {},
+    listOrganizationRecipients: async () => [],
+    getOrCreateDelivery: async () => ({
+      delivery: { id: "del-1" } as any,
+      isExisting: false,
+    }),
+    recordDeliverySuccess: async () => {},
+    recordDeliveryFailure: async () => {},
   };
 
-  it("responds to GET /api/inngest with schema/function introspection for both workflows", async () => {
+  it("responds to GET /api/inngest with schema/function introspection for all 3 workflows", async () => {
     const auditWorkflow = createAuditWorkflow({
       auditStore: mockWorkflowStore,
       analyzeUrl: async () => ({
@@ -74,7 +90,7 @@ describe("Inngest Serve Endpoint (/api/inngest)", () => {
     // Inngest serve GET endpoint returns 200 with schema inspection details
     expect(res.status).toBe(200);
     expect(res.body).toBeDefined();
-    // Verify that both registered functions are exposed in the introspection payload
+    // Verify that registered functions are exposed in the introspection payload
     if (res.body.functions) {
       const fnNames = res.body.functions.map((f: any) => f.id || f.name);
       expect(fnNames).toContain("execute-audit-workflow");
@@ -82,7 +98,7 @@ describe("Inngest Serve Endpoint (/api/inngest)", () => {
     }
   });
 
-  it("registers both functions by default when none are passed", async () => {
+  it("registers all 3 functions by default when none are passed", async () => {
     const app = createApp({
       inngestClient,
       getWorkflowStore: () => mockWorkflowStore,
@@ -94,6 +110,7 @@ describe("Inngest Serve Endpoint (/api/inngest)", () => {
       const fnNames = res.body.functions.map((f: any) => f.id || f.name);
       expect(fnNames).toContain("execute-audit-workflow");
       expect(fnNames).toContain("weekly-audit-scheduler");
+      expect(fnNames).toContain("deliver-alert-notification");
     }
   });
 

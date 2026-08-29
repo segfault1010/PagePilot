@@ -321,4 +321,30 @@ To evaluate regressions and detect actionable issues from audit diffs without pr
 - **Deterministic Priority Ordering**:
   - Multiple simultaneous alert decisions are sorted deterministically: `high` severity first, followed by `medium`, then `low`, with tie-breaking on rule priority (`overall_score_drop` $\rightarrow$ `new_high_severity_finding` $\rightarrow$ `finding_severity_increased` $\rightarrow$ `category_score_drop` $\rightarrow$ `signal_regressed` $\rightarrow$ `repeated_scan_failure`) and deduplication key.
 
+## D52 — Alert Persistence Model, Delivery Channel Abstraction, Recipient Resolution, State-Aware 24-Hour Suppression, and Delivery Idempotency (Milestone 3)
+
+To turn pure `AlertDecision` results into durable, idempotent persisted alerts and safely deliver notifications via Inngest background workflows:
+- **Alert Persistence Model & Schema Migration**:
+  - `supabase/migrations/20260829120000_alerts_and_delivery.sql` creates `public.alerts` and `public.alert_deliveries` tables.
+  - `alerts` records rule type, severity, reason summary, details, category, target ID, score delta, previous/current values, logical `deduplication_key`, and `schema_version = '1.0.0'`.
+  - Unique partial index `uq_alerts_run_dedup` on `(audit_run_id, deduplication_key) WHERE audit_run_id IS NOT NULL` prevents duplicate alert rows for the same run.
+  - Row-Level Security (RLS) is strictly enabled and forced on both tables, restricting read/write access to organization members (`is_org_member`) and deletion to admins/owners (`is_org_admin_or_owner`).
+- **State-Aware 24-Hour Suppression Window**:
+  - To prevent alert spam on recurring weekly scans while allowing legitimate regressions to notify teams, `persistAlert` checks for existing alerts with the same `(monitored_page_id, deduplication_key)` within 24 hours.
+  - State-awareness: if the existing alert within 24 hours reflects an **identical ongoing regression condition** (`currentValue`, `previousValue`, `scoreDelta` all match), the alert is marked `isSuppressed = true` and no notification event is emitted.
+  - If the intermediate state was clean/resolved, or if the score regression deepened, it is treated as a new regression and persisted with `isSuppressed = false`.
+- **Recipient Resolution**:
+  - `listOrganizationRecipients(orgId)` queries `memberships` joined with `profiles` for `role IN ('owner', 'admin')`.
+  - Alerts are delivered to team leads and administrators who have authority to act on UX regressions. Viewers and regular members are excluded from default transactional alert delivery.
+- **Delivery Channel Abstraction & Security**:
+  - Pure `NotificationProvider` interface in `@pagepilot/workflows` decoupling workflows from specific transactional email vendors (Resend/SendGrid/SES).
+  - `MockEmailNotificationProvider` (with simulated retryable failure support) for automated tests, and `ConsoleEmailNotificationProvider` for local development.
+  - `buildAlertEmailContent` is a pure deterministic renderer generating both semantic HTML and plain text emails with accessible score changes and severity badges.
+  - Strict security boundary: user inputs, titles, and evidence are HTML-escaped; raw HTML and server secrets (`SUPABASE_SERVICE_ROLE_KEY`, `GEMINI_API_KEY`, etc.) are never leaked.
+- **Delivery Idempotency & Delivery Semantics**:
+  - Unique constraint `uq_alert_deliveries_key` on `alert_deliveries(delivery_key)` where `delivery_key = buildAlertDeliveryKey(alertId, "email", recipient)`.
+  - Delivery semantics are explicitly documented as **at-least-once**. While the database `delivery_key` prevents duplicate delivery tracking records and suppresses resends upon workflow replay, network-level crashes between third-party provider acceptance and database commitment may result in at-least-once email transmission.
+  - If an Inngest step or workflow is retried, `getOrCreateDelivery` detects existing `status === "delivered"` records and skips duplicate provider dispatch.
+
+
 

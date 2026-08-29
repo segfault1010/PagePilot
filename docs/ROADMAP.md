@@ -149,14 +149,18 @@ This roadmap defines the evolution of PagePilot from a single-project MVP into a
     - Signal-level diffing (`pass <-> warn`, `unknown <-> measured`) without false penalties for missing evidence.
     - First-audit baseline state with zero false regressions and strict historical report immutability.
     - Typed Zod contracts and schemas in `@pagepilot/contracts`.
-  - **Task 3.4 — Alert Rules & Evaluation (`Complete & Verified`)**:
-    - Versioned alert contracts (`AlertDecision`, `AlertReason`, `AlertEvaluationContext`, `AlertEvaluationResult`, `AlertRuleType`, `AlertSeverity`) in `@pagepilot/contracts`.
-    - Pure, deterministic alert evaluation layer (`evaluateAuditAlerts`, `evaluateScanFailureAlert`) in `@pagepilot/workflows`.
-    - Reused centralized thresholds: overall score drop $\ge 10$ (`high`), category score drop $\ge 15$ (`medium` / `high` if $\ge 25$), new high-severity finding (`high`), finding severity escalated (`high` / `medium`), deterministic signal regressed (`medium`), repeated scan failures $\ge 3$ (`high`).
-    - Logical alert deduplication key strategy (`alert:${monitoredPageId}:${ruleType}${targetId ? `:${targetId}` : ""}`) independent of `auditRunId`.
-    - Context-supplied `evaluatedAt` preserving 100% determinism without internal clock calls.
-    - Suppression of alerts on baseline first audits and neutral unknown signal transitions.
-    - Deterministic multi-alert priority ordering and deduplication.
+  - **Task 3.5 — Alert Persistence & Delivery Workflow (`Complete & Verified`)**:
+    - Multi-tenant database migration `20260829120000_alerts_and_delivery.sql` creating `public.alerts` and `public.alert_deliveries` tables with strict RLS policies and partial unique index `uq_alerts_run_dedup`.
+    - Typed Zod contracts (`AlertEntity`, `AlertDeliveryEntity`, `ALERT_STATUSES`, `DELIVERY_STATUSES`, `DELIVERY_CHANNELS`, `buildAlertDeliveryKey`, `ALERT_CREATED_EVENT`, `alertCreatedPayloadSchema`) in `@pagepilot/contracts`.
+    - Integrated Step 4 (`evaluate-and-dispatch-alerts`) into `execute-audit-workflow` in `@pagepilot/workflows`, calculating diff against previous report, evaluating alerts, persisting via `persistAlert`, and dispatching `alert/created`.
+    - State-aware 24-hour suppression window in `persistAlert`: identical ongoing regressions within 24h are suppressed without duplicate alerts, while new or worsened regressions proceed.
+    - Durable Inngest function `deliver-alert-notification` (`createAlertDeliveryWorkflow`) triggered by `alert/created`:
+      - Step 1 (`load-and-validate-alert`): loads alert, validates tenant isolation, and skips if already delivered.
+      - Step 2 (`resolve-recipients`): queries organization `owner` and `admin` profiles.
+      - Step 3 (`deliver-notifications`): uses database `delivery_key` for idempotency and delivers via `NotificationProvider`.
+    - Pure `buildAlertEmailContent` generating sanitized semantic HTML and plain text emails without raw HTML or secret leakage.
+    - Registered `createAlertDeliveryWorkflow` on the `/api/inngest` serve endpoint in `apps/api`.
+    - Comprehensive test suites verifying email templates, delivery idempotency, tenant mismatch rejection, and retry semantics.
 - **Must Include:**
   - Inngest durable workflows for scheduled weekly audits.
   - Idempotent workflow steps anchored on `audit_run_id`.

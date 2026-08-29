@@ -67,6 +67,7 @@ import type { AuditPersistenceStore } from "../audits/audit-store.js";
 import { serve } from "inngest/express";
 import type { Inngest } from "inngest";
 import {
+  createAlertDeliveryWorkflow,
   createAuditWorkflow,
   createInngestClient,
   createWeeklyScheduler,
@@ -339,6 +340,9 @@ export function createApp(options: AppOptions = {}): Express {
       }),
       createWeeklyScheduler({
         schedulerStore: store,
+      }),
+      createAlertDeliveryWorkflow({
+        store,
       }),
     ];
   };

@@ -49,6 +49,22 @@ function createMockStore(
     claimRunForExecution: vi.fn(),
     persistCompletedAudit: vi.fn(),
     recordRunFailure: vi.fn(),
+    getPreviousSuccessfulAuditReport: vi.fn().mockResolvedValue(null),
+    findRecentAlert: vi.fn().mockResolvedValue(null),
+    persistAlert: vi.fn().mockResolvedValue({
+      alert: { id: "mock-alert" } as any,
+      isExisting: false,
+      isSuppressed: false,
+    }),
+    getAlert: vi.fn().mockResolvedValue(null),
+    updateAlertStatus: vi.fn().mockResolvedValue(undefined),
+    listOrganizationRecipients: vi.fn().mockResolvedValue([]),
+    getOrCreateDelivery: vi.fn().mockResolvedValue({
+      delivery: { id: "mock-del" } as any,
+      isExisting: false,
+    }),
+    recordDeliverySuccess: vi.fn().mockResolvedValue(undefined),
+    recordDeliveryFailure: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }

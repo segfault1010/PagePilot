@@ -1,7 +1,11 @@
 import type {
+  AlertDeliveryEntity,
+  AlertEntity,
+  AlertStatus,
   AuditRun,
   MonitoredPage,
   Report,
+  Role,
 } from "@pagepilot/contracts";
 import type { AnalysisOutcome } from "@pagepilot/audit-engine";
 import type { Inngest } from "inngest";
@@ -94,6 +98,80 @@ export interface WorkflowPersistenceStore {
     runId: string,
     error: { code: string; message: string; retryable: boolean },
   ): Promise<void>;
+
+  /**
+   * Fetches the previous successful audit report for a monitored page to perform diff comparison.
+   * Excludes currentRunId if provided.
+   */
+  getPreviousSuccessfulAuditReport(
+    orgId: string,
+    projectId: string,
+    pageId: string,
+    currentRunId?: string,
+  ): Promise<Report | null>;
+
+  /**
+   * Finds recent alerts for a monitored page with matching deduplication key within a time window (hours).
+   */
+  findRecentAlert(
+    monitoredPageId: string,
+    deduplicationKey: string,
+    withinHours?: number,
+  ): Promise<AlertEntity | null>;
+
+  /**
+   * Persists an evaluated alert decision.
+   * Returns isSuppressed = true if suppressed by the 24-hour suppression window on ongoing identical regression,
+   * or isExisting = true if a duplicate run/event was already persisted.
+   */
+  persistAlert(
+    alert: Omit<AlertEntity, "id" | "createdAt" | "updatedAt">,
+  ): Promise<{ alert: AlertEntity; isExisting: boolean; isSuppressed: boolean }>;
+
+  /**
+   * Fetches an alert by ID.
+   */
+  getAlert(alertId: string): Promise<AlertEntity | null>;
+
+  /**
+   * Updates an alert status (e.g. 'delivered' or 'failed').
+   */
+  updateAlertStatus(
+    alertId: string,
+    status: AlertStatus,
+    metadata?: Record<string, unknown>,
+  ): Promise<void>;
+
+  /**
+   * Resolves authorized notification recipients (owner and admin members) for an organization.
+   */
+  listOrganizationRecipients(
+    orgId: string,
+  ): Promise<Array<{ id: string; email: string; role: Role }>>;
+
+  /**
+   * Atomically claims or retrieves an alert delivery attempt using the deterministic deliveryKey.
+   */
+  getOrCreateDelivery(
+    delivery: Omit<AlertDeliveryEntity, "id" | "createdAt" | "updatedAt">,
+  ): Promise<{ delivery: AlertDeliveryEntity; isExisting: boolean }>;
+
+  /**
+   * Records successful delivery of an alert notification.
+   */
+  recordDeliverySuccess(
+    deliveryId: string,
+    metadata?: Record<string, unknown>,
+  ): Promise<void>;
+
+  /**
+   * Records failed delivery of an alert notification.
+   */
+  recordDeliveryFailure(
+    deliveryId: string,
+    errorMessage: string,
+    isPermanent: boolean,
+  ): Promise<void>;
 }
 
 /**
@@ -113,3 +191,4 @@ export interface SchedulerDeps {
   client?: Inngest;
   now?: () => Date;
 }
+
