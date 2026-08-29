@@ -149,6 +149,14 @@ This roadmap defines the evolution of PagePilot from a single-project MVP into a
     - Signal-level diffing (`pass <-> warn`, `unknown <-> measured`) without false penalties for missing evidence.
     - First-audit baseline state with zero false regressions and strict historical report immutability.
     - Typed Zod contracts and schemas in `@pagepilot/contracts`.
+  - **Task 3.4 — Alert Rules & Evaluation (`Complete & Verified`)**:
+    - Versioned alert contracts (`AlertDecision`, `AlertReason`, `AlertEvaluationContext`, `AlertEvaluationResult`, `AlertRuleType`, `AlertSeverity`) in `@pagepilot/contracts`.
+    - Pure, deterministic alert evaluation layer (`evaluateAuditAlerts`, `evaluateScanFailureAlert`) in `@pagepilot/workflows`.
+    - Reused centralized thresholds: overall score drop $\ge 10$ (`high`), category score drop $\ge 15$ (`medium` / `high` if $\ge 25$), new high-severity finding (`high`), finding severity escalated (`high` / `medium`), deterministic signal regressed (`medium`), repeated scan failures $\ge 3$ (`high`).
+    - Logical alert deduplication key strategy (`alert:${monitoredPageId}:${ruleType}${targetId ? `:${targetId}` : ""}`) independent of `auditRunId`.
+    - Context-supplied `evaluatedAt` preserving 100% determinism without internal clock calls.
+    - Suppression of alerts on baseline first audits and neutral unknown signal transitions.
+    - Deterministic multi-alert priority ordering and deduplication.
 - **Must Include:**
   - Inngest durable workflows for scheduled weekly audits.
   - Idempotent workflow steps anchored on `audit_run_id`.

@@ -297,3 +297,28 @@ To compare historical audit reports and evaluate regressions for continuous land
   - Every finding diff item, regression item, and improvement item preserves its `basis` (`"observed" | "inferred"`).
   - The summary explicitly tallies `observedRegressionsCount` and `inferredRegressionsCount` to maintain evidence transparency.
 
+## D51 — Deterministic Alert Rules, Severity Mapping, Repeated Failure Threshold, and Deduplication Key Strategy (Milestone 3)
+
+To evaluate regressions and detect actionable issues from audit diffs without premature notification delivery:
+- **Pure Evaluation & Context-Driven Determinism**:
+  - `evaluateAuditAlerts(diff, context, options)` and `evaluateScanFailureAlert(context, failureInfo)` are pure, deterministic functions in `@pagepilot/workflows`.
+  - Zero side effects, zero DB queries, zero network calls, and zero external email or webhook dispatch.
+  - `evaluatedAt` is supplied strictly as an input parameter via `AlertEvaluationContext`, preserving 100% determinism and eliminating non-deterministic clock access.
+- **Alert Rules & Centralized Thresholds**:
+  1. `overall_score_drop`: Triggered when overall score delta $\le -10$ points (`MEANINGFUL_OVERALL_SCORE_DROP_THRESHOLD`). Severity: `high`.
+  2. `category_score_drop`: Triggered when a category score delta $\le -15$ points (`MEANINGFUL_CATEGORY_SCORE_DROP_THRESHOLD`). Severity: `high` if drop $\ge 25$, `medium` if $\ge 15$. Drops $< 15$ points do not trigger category alerts.
+  3. `new_high_severity_finding`: Triggered when a brand new finding appears with `severity === "high"`. Severity: `high`. Low/medium findings do not trigger this alert.
+  4. `finding_severity_increased`: Triggered when an existing finding's severity escalates (e.g. `low -> high`, `low -> medium`). Severity matches the new escalated level. Severity reductions (improvements) never trigger alerts.
+  5. `signal_regressed`: Triggered when a deterministic signal regresses (`pass -> warn`). Severity: `medium`.
+  6. `repeated_scan_failure`: Triggered when consecutive audit failures reach or exceed `DEFAULT_REPEATED_FAILURE_ALERT_THRESHOLD = 3`. Severity: `high`.
+- **Deduplication Key Strategy**:
+  - Format: `buildAlertDeduplicationKey` $\rightarrow$ `alert:${monitoredPageId}:${ruleType}${targetId ? `:${targetId}` : ""}`.
+  - The key identifies the **logical alert condition** (the page, rule, and specific finding/signal identity) rather than the transient `auditRunId`.
+  - This guarantees that repeated or consecutive runs experiencing the same ongoing regression condition generate the identical deduplication identity for 24-hour delivery deduplication in Task 3.5.
+- **Baseline & Unknown State Suppression**:
+  - Baseline first-ever audits (`isBaseline === true` or `hasPreviousReport === false`) generate **zero alerts**.
+  - Transitions to or from `unknown` deterministic signals (`unknown -> pass/warn` or `pass/warn -> unknown`) are neutral evidence state shifts and **never generate alerts**.
+- **Deterministic Priority Ordering**:
+  - Multiple simultaneous alert decisions are sorted deterministically: `high` severity first, followed by `medium`, then `low`, with tie-breaking on rule priority (`overall_score_drop` $\rightarrow$ `new_high_severity_finding` $\rightarrow$ `finding_severity_increased` $\rightarrow$ `category_score_drop` $\rightarrow$ `signal_regressed` $\rightarrow$ `repeated_scan_failure`) and deduplication key.
+
+
