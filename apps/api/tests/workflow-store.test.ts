@@ -254,4 +254,140 @@ describe("SupabaseWorkflowPersistenceStore", () => {
       }),
     );
   });
+
+  it("listEligibleWeeklyPages queries active weekly pages and maps project timezone", async () => {
+    const rawJoinRows = [
+      {
+        ...rawPageRow,
+        id: "page-1",
+        projects: { timezone: "America/New_York", name: "Project Alpha" },
+      },
+      {
+        ...rawPageRow,
+        id: "page-2",
+        projects: null,
+      },
+    ];
+
+    const mockClient = {
+      from: vi.fn((table: string) => {
+        expect(table).toBe("monitored_pages");
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          range: vi.fn().mockResolvedValue({ data: rawJoinRows, error: null }),
+        };
+      }),
+    } as any;
+
+    const store = new SupabaseWorkflowPersistenceStore(mockClient);
+    const pages = await store.listEligibleWeeklyPages();
+
+    expect(pages).toHaveLength(2);
+    expect(pages[0]?.id).toBe("page-1");
+    expect(pages[0]?.timezone).toBe("America/New_York");
+    expect(pages[0]?.projectName).toBe("Project Alpha");
+    expect(pages[1]?.id).toBe("page-2");
+    expect(pages[1]?.timezone).toBe("UTC"); // Fallback to UTC
+  });
+
+  it("createScheduledAuditRun inserts new run with invocation_type = scheduled and updates latest pointer", async () => {
+    const newRunRow = {
+      ...rawRunRow,
+      id: "run-scheduled-new",
+      invocation_type: "scheduled",
+      idempotency_key: "scheduled:page-1:2026-W35",
+      triggered_by_user_id: null,
+    };
+
+    const mockClient = {
+      from: vi.fn((table: string) => {
+        if (table === "audit_runs") {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+            insert: vi.fn().mockReturnValue({
+              select: vi.fn().mockReturnValue({
+                single: vi.fn().mockResolvedValue({ data: newRunRow, error: null }),
+              }),
+            }),
+          };
+        } else if (table === "monitored_pages") {
+          return {
+            update: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnThis(),
+            }),
+          };
+        }
+        return {};
+      }),
+    } as any;
+
+    const store = new SupabaseWorkflowPersistenceStore(mockClient);
+    const result = await store.createScheduledAuditRun(
+      {
+        id: "page-1",
+        projectId,
+        organizationId: orgId,
+        canonicalUrl: "https://example.com",
+        cadence: "weekly",
+        status: "active",
+        ownerId: null,
+        tags: [],
+        latestAuditRunId: null,
+        latestSuccessfulAuditRunId: null,
+        createdAt: "2026-08-20T00:00:00Z",
+        updatedAt: "2026-08-20T00:00:00Z",
+      },
+      "scheduled:page-1:2026-W35",
+    );
+
+    expect(result.isExisting).toBe(false);
+    expect(result.run.id).toBe("run-scheduled-new");
+    expect(result.run.invocationType).toBe("scheduled");
+    expect(result.run.triggeredByUserId).toBeNull();
+  });
+
+  it("createScheduledAuditRun detects existing run and returns isExisting = true", async () => {
+    const existingRunRow = {
+      ...rawRunRow,
+      id: "run-scheduled-existing",
+      invocation_type: "scheduled",
+      idempotency_key: "scheduled:page-1:2026-W35",
+    };
+
+    const mockClient = {
+      from: vi.fn((table: string) => {
+        expect(table).toBe("audit_runs");
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          maybeSingle: vi.fn().mockResolvedValue({ data: existingRunRow, error: null }),
+        };
+      }),
+    } as any;
+
+    const store = new SupabaseWorkflowPersistenceStore(mockClient);
+    const result = await store.createScheduledAuditRun(
+      {
+        id: "page-1",
+        projectId,
+        organizationId: orgId,
+        canonicalUrl: "https://example.com",
+        cadence: "weekly",
+        status: "active",
+        ownerId: null,
+        tags: [],
+        latestAuditRunId: null,
+        latestSuccessfulAuditRunId: null,
+        createdAt: "2026-08-20T00:00:00Z",
+        updatedAt: "2026-08-20T00:00:00Z",
+      },
+      "scheduled:page-1:2026-W35",
+    );
+
+    expect(result.isExisting).toBe(true);
+    expect(result.run.id).toBe("run-scheduled-existing");
+  });
 });

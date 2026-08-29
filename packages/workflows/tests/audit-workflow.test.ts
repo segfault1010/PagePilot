@@ -145,6 +145,8 @@ describe("Durable Audit Workflow (execute-audit-workflow)", () => {
     return {
       getAuditRun: vi.fn(async () => sampleRun),
       getMonitoredPage: vi.fn(async () => samplePage),
+      listEligibleWeeklyPages: vi.fn(async () => []),
+      createScheduledAuditRun: vi.fn(async () => ({ run: sampleRun, isExisting: false })),
       claimRunForExecution: vi.fn(async (): Promise<ClaimRunResult> => ({
         state: "claimed",
         run: { ...sampleRun, status: "running" },

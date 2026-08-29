@@ -6,6 +6,7 @@ import { z } from "zod";
 export const AUDIT_REQUESTED_EVENT = "audit/requested" as const;
 export const AUDIT_COMPLETED_EVENT = "audit/completed" as const;
 export const AUDIT_FAILED_EVENT = "audit/failed" as const;
+export const AUDIT_SCHEDULE_WEEKLY_EVENT = "audit/schedule-weekly" as const;
 
 /**
  * Payload contract for the `audit/requested` event.
@@ -94,3 +95,30 @@ export const auditFailedEventSchema = z.object({
 });
 
 export type AuditFailedEvent = z.infer<typeof auditFailedEventSchema>;
+
+/**
+ * Payload contract for the `audit/schedule-weekly` event.
+ */
+export const auditScheduleWeeklyPayloadSchema = z.object({
+  triggeredAt: z.string().datetime().optional(),
+  organizationId: z.string().uuid().optional(),
+  projectId: z.string().uuid().optional(),
+});
+
+export type AuditScheduleWeeklyPayload = z.infer<
+  typeof auditScheduleWeeklyPayloadSchema
+>;
+
+/**
+ * Inngest event schema for `audit/schedule-weekly`.
+ */
+export const auditScheduleWeeklyEventSchema = z.object({
+  name: z.literal(AUDIT_SCHEDULE_WEEKLY_EVENT),
+  data: auditScheduleWeeklyPayloadSchema.default({}),
+  id: z.string().optional(),
+  ts: z.number().optional(),
+});
+
+export type AuditScheduleWeeklyEvent = z.infer<
+  typeof auditScheduleWeeklyEventSchema
+>;

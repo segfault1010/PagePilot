@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   AUDIT_ENGINE_CHECK_VERSION,
+  AUDIT_ENGINE_PROMPT_VERSION,
   AUDIT_ENGINE_SCORING_VERSION,
   REPORT_SCHEMA_VERSION,
 } from "@pagepilot/contracts";
@@ -11,6 +12,7 @@ import type {
 } from "@pagepilot/contracts";
 import type {
   ClaimRunResult,
+  MonitoredPageWithProject,
   WorkflowPersistenceStore,
 } from "@pagepilot/workflows";
 import {
@@ -67,7 +69,7 @@ function mapMonitoredPageRow(row: any): MonitoredPage {
 
 /**
  * Server-side PostgreSQL/Supabase persistence store implementing the narrow
- * WorkflowPersistenceStore interface for durable Inngest workflows.
+ * WorkflowPersistenceStore interface for durable Inngest workflows and schedulers.
  */
 export class SupabaseWorkflowPersistenceStore implements WorkflowPersistenceStore {
   private client: SupabaseClient;
@@ -118,6 +120,114 @@ export class SupabaseWorkflowPersistenceStore implements WorkflowPersistenceStor
 
     if (error || !data) return null;
     return mapMonitoredPageRow(data);
+  }
+
+  async listEligibleWeeklyPages(
+    limit = 100,
+    offset = 0,
+  ): Promise<MonitoredPageWithProject[]> {
+    const { data, error } = await this.client
+      .from("monitored_pages")
+      .select("*, projects(timezone, name)")
+      .eq("status", "active")
+      .eq("cadence", "weekly")
+      .range(offset, offset + limit - 1);
+
+    if (error || !data) return [];
+
+    return data.map((row: any) => {
+      const page = mapMonitoredPageRow(row);
+      return {
+        ...page,
+        timezone: row.projects?.timezone || "UTC",
+        projectName: row.projects?.name,
+      };
+    });
+  }
+
+  async createScheduledAuditRun(
+    page: MonitoredPage,
+    idempotencyKey: string,
+  ): Promise<{ run: AuditRun; isExisting: boolean }> {
+    const modelVersion = process.env.GEMINI_MODEL || "gemini-3.6-flash";
+    const now = new Date().toISOString();
+
+    // 1. Check for existing run by idempotencyKey
+    const { data: existing, error: findError } = await this.client
+      .from("audit_runs")
+      .select("*")
+      .eq("monitored_page_id", page.id)
+      .eq("idempotency_key", idempotencyKey)
+      .maybeSingle();
+
+    if (existing && !findError) {
+      return {
+        run: mapAuditRunRow(existing),
+        isExisting: true,
+      };
+    }
+
+    // 2. Insert new scheduled audit run
+    const { data: inserted, error: insertError } = await this.client
+      .from("audit_runs")
+      .insert({
+        monitored_page_id: page.id,
+        project_id: page.projectId,
+        organization_id: page.organizationId,
+        invocation_type: "scheduled",
+        status: "requested",
+        target_url: page.canonicalUrl,
+        triggered_by_user_id: null,
+        idempotency_key: idempotencyKey,
+        model_version: modelVersion,
+        check_version: AUDIT_ENGINE_CHECK_VERSION,
+        prompt_version: AUDIT_ENGINE_PROMPT_VERSION,
+        scoring_version: AUDIT_ENGINE_SCORING_VERSION,
+        retry_count: 0,
+        max_retries: 3,
+        created_at: now,
+        updated_at: now,
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      // Check for unique constraint violation (code 23505 on uq_audit_runs_idempotency)
+      if (
+        insertError.code === "23505" ||
+        insertError.message?.includes("uq_audit_runs_idempotency")
+      ) {
+        const { data: conflictRun } = await this.client
+          .from("audit_runs")
+          .select("*")
+          .eq("monitored_page_id", page.id)
+          .eq("idempotency_key", idempotencyKey)
+          .single();
+
+        if (conflictRun) {
+          return {
+            run: mapAuditRunRow(conflictRun),
+            isExisting: true,
+          };
+        }
+      }
+      throw insertError;
+    }
+
+    // 3. Update monitored_pages latest_audit_run_id (preserve latest_successful_audit_run_id)
+    await this.client
+      .from("monitored_pages")
+      .update({
+        latest_audit_run_id: inserted.id,
+        updated_at: now,
+      })
+      .eq("id", page.id)
+      .eq("organization_id", page.organizationId);
+
+    return {
+      run: mapAuditRunRow(inserted),
+      isExisting: false,
+    };
   }
 
   async claimRunForExecution(
@@ -243,6 +353,7 @@ export class SupabaseWorkflowPersistenceStore implements WorkflowPersistenceStor
         title: dr.title,
         detail: dr.detail,
         displayOrder: idx,
+        created_at: new Date().toISOString(),
       });
     });
 

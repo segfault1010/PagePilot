@@ -237,3 +237,34 @@ To introduce Inngest as the durable background workflow orchestration engine for
   - Existing authenticated manual audit endpoint (`POST /api/projects/:projectId/pages/:pageId/audits`) remains synchronous to prevent regressions in the workspace UI, while the durable Inngest workflow is established as a fully functional background path ready for weekly monitoring in Task 3.2.
   - Anonymous `/api/analyze` remains open, unauthenticated, and stateless.
   - Express serve handler is mounted at `/api/inngest` in `apps/api/src/http/app.ts`.
+
+## D49 — Weekly Scheduled Audit Workflow, Timezone Handling, and Multi-Trigger Idempotency (Milestone 3)
+
+To automate scheduled weekly landing page audits with zero duplicate runs across timezones, retries, and concurrent triggers:
+- **Durable Weekly Scheduler Function (`weekly-audit-scheduler`)**:
+  - Implemented in `@pagepilot/workflows` as `createWeeklyScheduler`.
+  - Supports dual triggers:
+    1. Cron: `0 0 * * 1` (Runs globally every Monday at 00:00 UTC).
+    2. Event: `audit/schedule-weekly` (for testing, staging, and administrative triggers).
+  - Registered alongside `execute-audit-workflow` in `apps/api/src/http/app.ts` under `/api/inngest`.
+- **Active & Weekly Eligibility Discovery**:
+  - `listEligibleWeeklyPages` strictly queries pages with `status = 'active'` and `cadence = 'weekly'`.
+  - Paused and archived pages are filtered out in discovery and re-verified during execution.
+  - Pages are enriched with project timezone metadata (`projects.timezone`).
+- **Deterministic Timezone & Week Window Derivation**:
+  - `getWeeklyWindow(date, timezone)` in `@pagepilot/contracts` formats the date into the target IANA timezone via standard `Intl.DateTimeFormat` and computes the ISO-8601 week number (`YYYY-Www`).
+  - Safe fallback to UTC on invalid or missing timezones.
+  - Generates deterministic window IDs (e.g. `2026-W35`) that remain constant throughout the week regardless of DST transitions, UTC hour offsets, or scheduler retry timing.
+- **Deterministic Idempotency Key & Pre-Persisted Run**:
+  - Each scheduled audit constructs an idempotency key: `scheduled:${page.id}:${windowId}`.
+  - Before emitting any event, the scheduler pre-persists the `audit_run` in PostgreSQL with:
+    - `invocation_type = 'scheduled'`
+    - `triggered_by_user_id = null` (scheduled runs never impersonate interactive users)
+    - `idempotency_key = scheduled:${page.id}:${windowId}`
+  - If a run already exists for that `(monitored_page_id, idempotency_key)`:
+    - `createScheduledAuditRun` returns `{ run: existingRun, isExisting: true }`.
+    - The scheduler **suppresses event emission** when `isExisting === true`. This guarantees that multiple cron triggers, manual event dispatches, or Inngest step retries in the same week never emit duplicate `audit/requested` events.
+    - PostgreSQL unique index `uq_audit_runs_idempotency` acts as the authoritative final barrier against race conditions.
+- **Zero Workflow Duplication**:
+  - The scheduler emits standard `audit/requested` events referencing persisted IDs only.
+  - Reuses the verified `execute-audit-workflow` pipeline (SSRF-safe fetch, deterministic checks, structured Gemini audit, atomic PostgreSQL persistence RPC, and failure preservation semantics).

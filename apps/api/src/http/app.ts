@@ -69,6 +69,7 @@ import type { Inngest } from "inngest";
 import {
   createAuditWorkflow,
   createInngestClient,
+  createWeeklyScheduler,
 } from "@pagepilot/workflows";
 import type { WorkflowPersistenceStore } from "@pagepilot/workflows";
 import { SupabaseWorkflowPersistenceStore } from "../audits/supabase-workflow-store.js";
@@ -335,6 +336,9 @@ export function createApp(options: AppOptions = {}): Express {
       createAuditWorkflow({
         auditStore: store,
         analyzeUrl: options.analyzeUrl,
+      }),
+      createWeeklyScheduler({
+        schedulerStore: store,
       }),
     ];
   };

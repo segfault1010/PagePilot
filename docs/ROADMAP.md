@@ -134,8 +134,16 @@ This roadmap defines the evolution of PagePilot from a single-project MVP into a
     - Created `SupabaseWorkflowPersistenceStore` in `apps/api/src/audits/` and mounted Inngest serve handler at `/api/inngest`.
     - Kept secrets strictly server-side in `apps/api` runtime boundary; browser bundle contains zero workflow dependencies.
     - Preserved anonymous one-off audit (`POST /api/analyze`) and synchronous manual audit endpoint with zero regressions.
-  - **Task 3.2 — Weekly Scheduled Audit Workflow (`Planned`)**:
-    - Cron/recurring scheduled scan workflow for active monitored pages.
+  - **Task 3.2 — Weekly Scheduled Audit Workflow (`Complete & Verified`)**:
+    - Implemented durable `weekly-audit-scheduler` (`createWeeklyScheduler`) in `@pagepilot/workflows` with dual triggers (Cron: `0 0 * * 1` and Event: `audit/schedule-weekly`).
+    - Added deterministic timezone-aware week window derivation (`getWeeklyWindow`) in `@pagepilot/contracts`.
+    - Discover active monitored pages configured for weekly cadence with project timezone metadata.
+    - Deterministic idempotency key strategy (`scheduled:${page.id}:${windowId}`) and pre-persisted `audit_run` (`invocation_type = 'scheduled'`, `triggered_by_user_id = null`).
+    - Suppressed duplicate event emission when `isExisting === true` backed by PostgreSQL unique index `uq_audit_runs_idempotency`.
+    - Dispatches `audit/requested` events, reusing the verified `execute-audit-workflow` without duplication.
+  - **Task 3.3 — Score & Finding Regression Diff Engine (`Planned`)**:
+    - Compare latest completed report against previous successful report.
+    - Calculate score difference, category changes, and newly introduced high-severity findings.
 - **Must Include:**
   - Inngest durable workflows for scheduled weekly audits.
   - Idempotent workflow steps anchored on `audit_run_id`.

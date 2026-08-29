@@ -7,6 +7,14 @@ import type { AnalysisOutcome } from "@pagepilot/audit-engine";
 import type { Inngest } from "inngest";
 
 /**
+ * Monitored page entity enriched with project metadata (e.g. timezone).
+ */
+export type MonitoredPageWithProject = MonitoredPage & {
+  timezone?: string;
+  projectName?: string;
+};
+
+/**
  * Result of attempting to claim an audit run for execution.
  * Prevents concurrent workers from executing the same auditRunId.
  */
@@ -17,7 +25,7 @@ export type ClaimRunResult =
   | { state: "not_found" };
 
 /**
- * Narrow persistence interface required for durable audit workflow execution.
+ * Narrow persistence interface required for durable audit workflow and scheduler execution.
  * Decoupled from direct database clients or Supabase SDKs.
  */
 export interface WorkflowPersistenceStore {
@@ -34,6 +42,24 @@ export interface WorkflowPersistenceStore {
     projectId: string,
     pageId: string,
   ): Promise<MonitoredPage | null>;
+
+  /**
+   * Discovers all active monitored pages configured for weekly cadence.
+   * Enriched with project timezone for deterministic weekly window derivation.
+   */
+  listEligibleWeeklyPages(
+    limit?: number,
+    offset?: number,
+  ): Promise<MonitoredPageWithProject[]>;
+
+  /**
+   * Atomically creates a scheduled audit run with a deterministic idempotency key.
+   * If a run already exists for (monitored_page_id, idempotency_key), returns { run, isExisting: true }.
+   */
+  createScheduledAuditRun(
+    page: MonitoredPage,
+    idempotencyKey: string,
+  ): Promise<{ run: AuditRun; isExisting: boolean }>;
 
   /**
    * Atomically claims an audit run for execution:
@@ -71,10 +97,19 @@ export interface WorkflowPersistenceStore {
 }
 
 /**
- * Dependencies injected into the durable workflow factory.
+ * Dependencies injected into the durable audit workflow factory.
  */
 export interface WorkflowDeps {
   auditStore: WorkflowPersistenceStore;
   analyzeUrl?: (url: string) => Promise<AnalysisOutcome>;
   client?: Inngest;
+}
+
+/**
+ * Dependencies injected into the weekly scheduler workflow factory.
+ */
+export interface SchedulerDeps {
+  schedulerStore: WorkflowPersistenceStore;
+  client?: Inngest;
+  now?: () => Date;
 }
