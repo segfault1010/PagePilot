@@ -446,9 +446,12 @@ export class SupabaseAuditPersistenceStore implements AuditPersistenceStore {
   ): Promise<{ audits: AuditHistoryItem[]; total: number }> {
     const { data: runs, error, count } = await this.client
       .from("audit_runs")
-      .select("*, audit_reports(id, overall_score, score_confidence, summary)", {
-        count: "exact",
-      })
+      .select(
+        "*, audit_reports(id, overall_score, score_confidence, summary, report_payload)",
+        {
+          count: "exact",
+        },
+      )
       .eq("organization_id", orgId)
       .eq("monitored_page_id", pageId)
       .order("created_at", { ascending: false })
@@ -463,6 +466,19 @@ export class SupabaseAuditPersistenceStore implements AuditPersistenceStore {
         ? row.audit_reports[0]
         : row.audit_reports;
 
+      let categoryScores: Record<string, number> | undefined;
+      if (
+        report?.report_payload?.categories &&
+        Array.isArray(report.report_payload.categories)
+      ) {
+        categoryScores = {};
+        for (const cat of report.report_payload.categories) {
+          if (cat.category && typeof cat.score === "number") {
+            categoryScores[cat.category] = cat.score;
+          }
+        }
+      }
+
       return {
         id: row.id,
         monitoredPageId: row.monitored_page_id,
@@ -474,6 +490,7 @@ export class SupabaseAuditPersistenceStore implements AuditPersistenceStore {
         finalUrl: row.final_url ?? null,
         overallScore: report?.overall_score ?? null,
         scoreConfidence: report?.score_confidence ?? null,
+        categoryScores: categoryScores as any,
         summary: report?.summary ?? null,
         auditReportId: report?.id ?? null,
         startedAt: row.started_at ?? null,

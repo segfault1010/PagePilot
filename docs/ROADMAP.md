@@ -120,7 +120,7 @@ This roadmap defines the evolution of PagePilot from a single-project MVP into a
 ---
 
 ### Milestone 3: Continuous Monitoring & Alerts
-- **Status:** `Active`
+- **Status:** `Complete & Verified` (Application, Contracts, Tests, & Static SQL/RLS Complete; Staging Database RLS, Inngest Cloud Dispatch, & Real Transactional Email Pending Staging)
 - **Product Outcome:** Teams receive proactive alerts when monitored landing pages experience meaningful UX regressions.
 - **Dependencies:** Milestone 2.
 - **Tasks:**
@@ -149,6 +149,13 @@ This roadmap defines the evolution of PagePilot from a single-project MVP into a
     - Signal-level diffing (`pass <-> warn`, `unknown <-> measured`) without false penalties for missing evidence.
     - First-audit baseline state with zero false regressions and strict historical report immutability.
     - Typed Zod contracts and schemas in `@pagepilot/contracts`.
+  - **Task 3.4 — Alert Rules & Evaluation (`Complete & Verified`)**:
+    - Versioned alert contracts (`AlertDecision`, `AlertReason`, `AlertEvaluationContext`, `AlertEvaluationResult`, `AlertRuleType`, `AlertSeverity`) in `@pagepilot/contracts`.
+    - Pure, deterministic alert evaluation layer (`evaluateAuditAlerts`, `evaluateScanFailureAlert`) in `@pagepilot/workflows`.
+    - Centralized thresholds: overall score drop $\ge 10$ (`high`), category score drop $\ge 15$ (`medium` / `high` if $\ge 25$), new high-severity finding (`high`), finding severity escalated (`high` / `medium`), deterministic signal regressed (`medium`), repeated scan failures $\ge 3$ (`high`).
+    - Logical alert deduplication key strategy (`alert:${monitoredPageId}:${ruleType}${targetId ? `:${targetId}` : ""}`) independent of transient `auditRunId`.
+    - Context-supplied `evaluatedAt` preserving 100% determinism without internal clock calls.
+    - Suppression of alerts on baseline first audits and neutral unknown signal transitions.
   - **Task 3.5 — Alert Persistence & Delivery Workflow (`Complete & Verified`)**:
     - Multi-tenant database migration `20260829120000_alerts_and_delivery.sql` creating `public.alerts` and `public.alert_deliveries` tables with strict RLS policies and partial unique index `uq_alerts_run_dedup`.
     - Typed Zod contracts (`AlertEntity`, `AlertDeliveryEntity`, `ALERT_STATUSES`, `DELIVERY_STATUSES`, `DELIVERY_CHANNELS`, `buildAlertDeliveryKey`, `ALERT_CREATED_EVENT`, `alertCreatedPayloadSchema`) in `@pagepilot/contracts`.
@@ -160,7 +167,15 @@ This roadmap defines the evolution of PagePilot from a single-project MVP into a
       - Step 3 (`deliver-notifications`): uses database `delivery_key` for idempotency and delivers via `NotificationProvider`.
     - Pure `buildAlertEmailContent` generating sanitized semantic HTML and plain text emails without raw HTML or secret leakage.
     - Registered `createAlertDeliveryWorkflow` on the `/api/inngest` serve endpoint in `apps/api`.
-    - Comprehensive test suites verifying email templates, delivery idempotency, tenant mismatch rejection, and retry semantics.
+  - **Task 3.6 — Trend Dashboard & Score History UI (`Complete & Verified`)**:
+    - Added `categoryScores` mapping to `AuditHistoryItem` in `@pagepilot/contracts` and populated via `audit_reports.report_payload` in `apps/api`.
+    - Built accessible native SVG `<ScoreTrendChart />` component in `apps/web/src/features/workspace/components/score-trend-chart.tsx`:
+      - Chronological overall score trajectory plotting with neon drop-shadow and gradient area fill.
+      - Baseline single-audit indicator and clean empty state handling.
+      - Interactive hover and focus tooltips on data points with date, score, delta vs previous, and invocation type.
+      - Category trajectory cards for all 7 UX dimensions showing current score, progress bar, and score change vs previous audit.
+      - Keyboard accessible navigation, screen reader ARIA regions, and reduced-motion support with zero third-party chart dependencies.
+    - Embedded `<ScoreTrendChart />` in `PageDetail` view in `apps/web`.
 - **Must Include:**
   - Inngest durable workflows for scheduled weekly audits.
   - Idempotent workflow steps anchored on `audit_run_id`.
@@ -171,9 +186,10 @@ This roadmap defines the evolution of PagePilot from a single-project MVP into a
   - Failed scans recorded without overwriting the last successful report.
 - **Explicitly Defer:** Daily/custom cron schedules, Slack notifications, SMS alerts.
 - **Acceptance Criteria:**
-  - Retried workflow runs do not duplicate audits, reports, or alert deliveries.
-  - Alerts clearly detail the affected page, regressed category, evidence, and recommended remediation.
+  - Retried workflow runs do not duplicate audits, reports, or alert deliveries (automated workflow replay tests verified; live cloud Inngest dispatch pending staging).
+  - Alerts clearly detail the affected page, regressed category, evidence, and recommended remediation (email templates & mock delivery verified; live transactional provider dispatch pending staging).
   - Failed audits preserve previous report as the active source of truth.
+  - Visual trend chart displays overall score history and category trajectories cleanly over time.
 
 ---
 

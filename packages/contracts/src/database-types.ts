@@ -460,6 +460,7 @@ export const auditHistoryItemSchema = z.object({
   finalUrl: z.string().nullable().optional(),
   overallScore: z.number().int().min(0).max(100).nullable().optional(),
   scoreConfidence: scoreConfidenceSchema.nullable().optional(),
+  categoryScores: z.record(auditCategorySchema, z.number().min(0).max(100)).optional(),
   summary: z.string().nullable().optional(),
   auditReportId: z.string().uuid().nullable().optional(),
   startedAt: z.string().nullable().optional(),

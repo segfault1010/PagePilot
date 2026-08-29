@@ -205,4 +205,28 @@ describe("Page Detail & Audit History UI", () => {
     expect(screen.getByRole("button", { name: "View Latest Audit" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "View Report" })).toBeTruthy();
   });
+
+  it("renders the UX Score Trend chart and category trajectories when history exists", () => {
+    render(
+      <PageDetail
+        project={sampleProject}
+        page={samplePage}
+        role="owner"
+        history={sampleHistory}
+        historyTotal={1}
+        isLoadingHistory={false}
+        historyPage={1}
+        pageSize={10}
+        onPageChange={vi.fn()}
+        onBackToProject={vi.fn()}
+        onRunAudit={vi.fn()}
+        onViewLatestReport={vi.fn()}
+        onViewHistoricalReport={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("region", { name: /UX Score Trend/i })).toBeTruthy();
+    expect(screen.getByText("UX Score Trajectory")).toBeTruthy();
+    expect(screen.getByText("Category Trajectories")).toBeTruthy();
+  });
 });

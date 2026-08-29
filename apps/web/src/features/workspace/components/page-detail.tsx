@@ -5,6 +5,7 @@ import type {
   Project,
   Role,
 } from "@pagepilot/contracts";
+import { ScoreTrendChart } from "./score-trend-chart.js";
 
 export interface PageDetailProps {
   project: Project;
@@ -247,6 +248,14 @@ export function PageDetail({
           </div>
         </div>
       </div>
+
+      {/* UX Score Trend & Category Trajectories Dashboard */}
+      {history.length > 0 && (
+        <ScoreTrendChart
+          history={history}
+          onSelectRun={onViewHistoricalReport}
+        />
+      )}
 
       {/* Audit History Table */}
       <div className="space-y-3">

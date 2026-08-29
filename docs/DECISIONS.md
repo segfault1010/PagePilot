@@ -346,5 +346,25 @@ To turn pure `AlertDecision` results into durable, idempotent persisted alerts a
   - Delivery semantics are explicitly documented as **at-least-once**. While the database `delivery_key` prevents duplicate delivery tracking records and suppresses resends upon workflow replay, network-level crashes between third-party provider acceptance and database commitment may result in at-least-once email transmission.
   - If an Inngest step or workflow is retried, `getOrCreateDelivery` detects existing `status === "delivered"` records and skips duplicate provider dispatch.
 
+## D53 — Native SVG Trend Dashboard, Category Score Trajectories, and Zero Heavy Chart Dependencies (Milestone 3)
 
-
+To visualize landing page UX health trajectories and category movements over time without adding heavy third-party bundle weight:
+- **Zero Heavy Chart Dependencies**:
+  - In accordance with `AGENTS.md` and Decision `D2`, external chart libraries (e.g. Chart.js, Recharts, D3) were avoided.
+  - Built a native SVG `<ScoreTrendChart />` component in `apps/web/src/features/workspace/components/score-trend-chart.tsx`.
+  - SVG polylines, area gradient fills, coordinate scaling, and responsive viewBox keeping the production bundle light, fast, and dependency-free.
+- **Score History & Category Trajectory Mapping**:
+  - `AuditHistoryItem` in `@pagepilot/contracts` was augmented with optional `categoryScores?: Partial<Record<AuditCategory, number>>`.
+  - `listAuditHistory` in `apps/api/src/audits/audit-store.ts` extracts `categories` from `audit_reports.report_payload` alongside the run record, avoiding any additional database round-trips.
+- **Baseline & Edge-Case Handling**:
+  - Single audit baseline: renders a distinct radar-like baseline marker with "Baseline Established" indicator without computing false deltas.
+  - Multi-audit progression: calculates overall net improvement/decline since baseline and recent delta vs previous audit.
+  - Failed scans: filtered from the score line so that failed runs do not pollute historical score curves or replace last successful measurements.
+  - Empty history: displays an actionable empty state prompting the team to run the first audit.
+- **Interactive Tooltips & Category Trajectories Grid**:
+  - Interactive hover and focus data points reveal rich metadata: date/time, score, confidence, delta vs previous, and invocation type (`scheduled` vs `manual`).
+  - 7 Category Trajectory cards display current score, visual progress bar, and score delta vs previous audit for each UX dimension (`clarity`, `visualHierarchy`, `ctaEffectiveness`, `copy`, `accessibility`, `mobileUx`, `trustCredibility`).
+- **Accessibility & Motion Considerations**:
+  - Complete ARIA labelling: `role="region"`, `aria-label="UX Score Trend and Historical Trajectory"`, and `role="img"` on SVG with narrative description.
+  - Focusable keyboard-navigable dots with `tabIndex={0}` and screen-reader accessible attributes.
+  - Respects `@media (prefers-reduced-motion)` through clean CSS transitions and zero jarring animations.
