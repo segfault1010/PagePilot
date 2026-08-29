@@ -11,8 +11,10 @@
   "dependencies": {
     "@pagepilot/audit-engine": "workspace:*",
     "@pagepilot/contracts": "workspace:*",
+    "@pagepilot/workflows": "workspace:*",
     "@supabase/supabase-js": "^2.112.4",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "inngest": "^4.18.1"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",

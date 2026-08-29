@@ -207,5 +207,33 @@ To turn the authenticated persistence and API layer into a cohesive, accessible 
   - Anonymous visitors continue to land on the public one-off auditor (`Landing` $\rightarrow$ `Analyzing` $\rightarrow$ `Report` / `Failure`) with zero friction.
   - Authenticated users can seamlessly switch between the workspace and the one-off auditor via the navigation header.
 
+## D48 — Inngest Durable Workflows Architecture, Decoupled Workflow Package, Event Contracts, and Baseline Audit Execution (Milestone 3)
 
-
+To introduce Inngest as the durable background workflow orchestration engine for continuous monitoring:
+- **Modular Package Boundary (`@pagepilot/workflows`)**:
+  - Established `@pagepilot/workflows` package owning durable workflow definitions without UI or Express routing concerns.
+  - The package depends on `@pagepilot/contracts`, `@pagepilot/audit-engine`, and `inngest`.
+  - **Decoupled Database Boundary**: `@pagepilot/workflows` does not depend on `@supabase/supabase-js`. It defines a narrow `WorkflowPersistenceStore` interface. The database implementation (`SupabaseWorkflowPersistenceStore`) lives server-side in `apps/api`.
+- **Server-Only Credentials & Runtime Boundary**:
+  - Inngest secrets (`INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`), Supabase credentials (`SUPABASE_SERVICE_ROLE_KEY`), and `GEMINI_API_KEY` remain strictly server-only within `apps/api`.
+  - Browser bundles contain zero workflow package references and zero server credentials.
+- **Versioned Event Contracts**:
+  - Defined `audit/requested` (`AUDIT_REQUESTED_EVENT`) and companion event contracts (`audit/completed`, `audit/failed`) in `@pagepilot/contracts`.
+  - Payload contract `auditRequestedPayloadSchema` includes strictly resource IDs (`auditRunId`, `organizationId`, `projectId`, `monitoredPageId`, `requestedByUserId`).
+  - Raw HTML, Gemini prompts, and secrets are strictly excluded from event payloads.
+- **Idempotency, DB-Backed Concurrency Lock, and Replay Safety**:
+  - Every workflow execution is anchored to `audit_run.id`.
+  - Step 1 (`claim-and-validate-run`):
+    - Validates payload against Zod schema and enforces strict tenant isolation.
+    - Idempotency check: if `status === "completed"`, returns early without re-executing analysis or creating duplicate reports.
+    - Concurrency lock: atomically claims execution in PostgreSQL (`status IN ('requested', 'queued')` $\rightarrow$ `status = 'running'`). If a concurrent worker is already executing (`status === 'running'`), returns `{ state: "already_running" }` and terminates cleanly.
+- **Isolated Multi-Step Execution & Failure Semantics**:
+  - Step 2 (`execute-audit-engine`): calls `@pagepilot/audit-engine` (`analyzeTarget`) outside of database transactions.
+  - Step 3 (`persist-audit-result`):
+    - On success: commits completed report atomically via existing PostgreSQL RPC `persist_completed_audit_report` and updates latest pointers.
+    - On failure: records failure metadata in `audit_runs` and updates `latest_audit_run_id` while **preserving `latest_successful_audit_run_id` intact**.
+    - Non-retryable errors (e.g. `INVALID_URL`, `BLOCKED_DESTINATION`) throw `NonRetriableError` to avoid infinite retry loops.
+- **API Strategy (Option A)**:
+  - Existing authenticated manual audit endpoint (`POST /api/projects/:projectId/pages/:pageId/audits`) remains synchronous to prevent regressions in the workspace UI, while the durable Inngest workflow is established as a fully functional background path ready for weekly monitoring in Task 3.2.
+  - Anonymous `/api/analyze` remains open, unauthenticated, and stateless.
+  - Express serve handler is mounted at `/api/inngest` in `apps/api/src/http/app.ts`.

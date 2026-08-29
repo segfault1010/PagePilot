@@ -3,6 +3,7 @@
   "references": [
     { "path": "./packages/contracts" },
     { "path": "./packages/audit-engine" },
+    { "path": "./packages/workflows" },
     { "path": "./apps/web" },
     { "path": "./apps/api" },
     { "path": "./tsconfig.node.json" }

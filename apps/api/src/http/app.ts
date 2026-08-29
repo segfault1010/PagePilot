@@ -64,6 +64,14 @@ function makeRateLimiter() {
 }
 
 import type { AuditPersistenceStore } from "../audits/audit-store.js";
+import { serve } from "inngest/express";
+import type { Inngest } from "inngest";
+import {
+  createAuditWorkflow,
+  createInngestClient,
+} from "@pagepilot/workflows";
+import type { WorkflowPersistenceStore } from "@pagepilot/workflows";
+import { SupabaseWorkflowPersistenceStore } from "../audits/supabase-workflow-store.js";
 
 export interface AppOptions extends AuthMiddlewareOptions {
   /** Injectable for tests; production uses the real safe-fetch pipeline. */
@@ -72,6 +80,12 @@ export interface AppOptions extends AuthMiddlewareOptions {
   getProjectsStore?: (req: Request) => ProjectsStore;
   /** Injectable for tests; production instantiates SupabaseAuditPersistenceStore with user authToken. */
   getAuditStore?: (req: Request) => AuditPersistenceStore;
+  /** Injectable for tests; Inngest client */
+  inngestClient?: Inngest;
+  /** Injectable for tests; Inngest workflow functions */
+  inngestFunctions?: any[];
+  /** Injectable for tests; workflow persistence store */
+  getWorkflowStore?: () => WorkflowPersistenceStore;
 }
 
 export function sendApiError(
@@ -309,6 +323,38 @@ export function createApp(options: AppOptions = {}): Express {
       analyzeUrl: options.analyzeUrl,
     }),
   );
+
+  // -------------------------------------------------------------------------
+  // Inngest Durable Workflow Endpoint
+  // -------------------------------------------------------------------------
+  const getWorkflowFunctions = () => {
+    if (options.inngestFunctions) return options.inngestFunctions;
+    const store =
+      options.getWorkflowStore?.() ?? new SupabaseWorkflowPersistenceStore();
+    return [
+      createAuditWorkflow({
+        auditStore: store,
+        analyzeUrl: options.analyzeUrl,
+      }),
+    ];
+  };
+
+  const inngestInstance =
+    options.inngestClient ??
+    createInngestClient({
+      isDev:
+        process.env.INNGEST_DEV === "1" ||
+        process.env.NODE_ENV !== "production" ||
+        !process.env.INNGEST_SIGNING_KEY,
+    });
+
+  app.use("/api/inngest", (req: Request, res: Response, next: NextFunction) => {
+    const handler = serve({
+      client: inngestInstance,
+      functions: getWorkflowFunctions(),
+    });
+    handler(req, res, next);
+  });
 
   app.use("/api", (_req, res) => {
     sendApiError(res, 404, API_ERROR_CODES.notFound, "Unknown API route.", false);

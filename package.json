@@ -15,7 +15,8 @@
     "@pagepilot/api": "workspace:*",
     "@pagepilot/audit-engine": "workspace:*",
     "@pagepilot/contracts": "workspace:*",
-    "@pagepilot/web": "workspace:*"
+    "@pagepilot/web": "workspace:*",
+    "@pagepilot/workflows": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",

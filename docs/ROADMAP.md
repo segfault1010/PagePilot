@@ -10,8 +10,8 @@ This roadmap defines the evolution of PagePilot from a single-project MVP into a
 |---|---|---|---|
 | **0. Product Foundation** | Maintainable monorepo base | **Complete** | pnpm workspace, shared contracts package, isolated audit engine, apps/web, apps/api, docs ledger |
 | **1. Core Audit MVP** | Trustworthy one-off UX audit | **Complete** | Safe fetch, deterministic checks, Gemini structured audit, report UI |
-| **2. Accounts & Projects** | Saved reports & tenant workspaces | **Active** | Supabase Auth, organizations, roles, projects, monitored page registry |
-| **3. Continuous Monitoring** | Automated regression alerts | **Planned** | Inngest weekly workflows, score diffing, email alerts, trend dashboard |
+| **2. Accounts & Projects** | Saved reports & tenant workspaces | **Complete** | Supabase Auth, organizations, roles, projects, monitored page registry |
+| **3. Continuous Monitoring** | Automated regression alerts | **Active** | Inngest weekly workflows, score diffing, email alerts, trend dashboard |
 | **4. Collaboration** | Findings turned into team work | **Planned** | Finding work items (`open`, `resolved`), assignees, notes, read-only share links |
 | **5. Integrations & Measurement** | Growth toolchain connectivity | **Planned** | Slack notifications, webhooks, UTM tracking, analytics context import |
 | **6. Deep Analysis Pipeline** | Browser-rendered evidence | **Planned** | Playwright screenshots, vision-assisted hierarchy, Lighthouse, axe checks |
@@ -120,9 +120,22 @@ This roadmap defines the evolution of PagePilot from a single-project MVP into a
 ---
 
 ### Milestone 3: Continuous Monitoring & Alerts
-- **Status:** `Next`
+- **Status:** `Active`
 - **Product Outcome:** Teams receive proactive alerts when monitored landing pages experience meaningful UX regressions.
 - **Dependencies:** Milestone 2.
+- **Tasks:**
+  - **Task 3.1 — Inngest Setup & Baseline Audit Workflow (`Complete & Verified`)**:
+    - Created `@pagepilot/workflows` package owning durable workflow definitions with a narrow persistence interface (`WorkflowPersistenceStore`).
+    - Defined versioned event contracts (`audit/requested`, `audit/completed`, `audit/failed`) and Zod schemas in `@pagepilot/contracts`.
+    - Implemented durable `execute-audit-workflow` function (`createAuditWorkflow`) with isolated multi-step execution:
+      - Step 1 (`claim-and-validate-run`): validates event schema, verifies tenant isolation, checks idempotent completion, and applies atomic PostgreSQL concurrency lock.
+      - Step 2 (`execute-audit-engine`): executes `@pagepilot/audit-engine` (`analyzeTarget`) safely outside database transactions.
+      - Step 3 (`persist-audit-result`): on success commits completed report atomically via PostgreSQL RPC `persist_completed_audit_report`; on failure records failure while preserving `latest_successful_audit_run_id` intact. Non-retryable errors raise `NonRetriableError`.
+    - Created `SupabaseWorkflowPersistenceStore` in `apps/api/src/audits/` and mounted Inngest serve handler at `/api/inngest`.
+    - Kept secrets strictly server-side in `apps/api` runtime boundary; browser bundle contains zero workflow dependencies.
+    - Preserved anonymous one-off audit (`POST /api/analyze`) and synchronous manual audit endpoint with zero regressions.
+  - **Task 3.2 — Weekly Scheduled Audit Workflow (`Planned`)**:
+    - Cron/recurring scheduled scan workflow for active monitored pages.
 - **Must Include:**
   - Inngest durable workflows for scheduled weekly audits.
   - Idempotent workflow steps anchored on `audit_run_id`.
