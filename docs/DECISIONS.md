@@ -268,3 +268,32 @@ To automate scheduled weekly landing page audits with zero duplicate runs across
 - **Zero Workflow Duplication**:
   - The scheduler emits standard `audit/requested` events referencing persisted IDs only.
   - Reuses the verified `execute-audit-workflow` pipeline (SSRF-safe fetch, deterministic checks, structured Gemini audit, atomic PostgreSQL persistence RPC, and failure preservation semantics).
+
+## D50 — Pure Deterministic Regression Diff Engine, Stable Finding Identity, and Meaningful Regression Thresholds (Milestone 3)
+
+To compare historical audit reports and evaluate regressions for continuous landing page monitoring:
+- **Pure Function & Historical Report Immutability**:
+  - `computeAuditDiff(params)` is a pure, side-effect free, deterministic function in `@pagepilot/audit-engine`.
+  - Zero network calls, zero database queries, zero model invocations, and zero timestamp guessing.
+  - Input reports (`previousReport` and `currentReport`) are treated as immutable historical evidence and never mutated.
+- **Centralized Meaningful Regression Thresholds**:
+  - `MEANINGFUL_OVERALL_SCORE_DROP_THRESHOLD = 10`: an overall score drop of $\ge 10$ points is classified as a meaningful regression and added to `regressions`.
+  - `MEANINGFUL_CATEGORY_SCORE_DROP_THRESHOLD = 15`: a category score drop of $\ge 15$ points is classified as a meaningful category regression and added to `regressions`.
+  - Smaller score decreases still record `direction = "regressed"` but are **not included** in the meaningful `regressions` collection.
+- **Stable Finding Identity Strategy**:
+  - For observed findings backed by deterministic signals, `buildFindingIdentityKey` derives an identity key based on sorted signal IDs: `findingType:category:signal:sig1+sig2`. This guarantees that harmless LLM title/evidence wording changes do not cause false finding churn.
+  - For inferred findings without signal IDs, `buildFindingIdentityKey` normalizes the title into a clean alphanumeric slug: `findingType:category:inferred:normalized-slug`.
+  - Classifies findings into `new`, `resolved`, `changed`, and `unchanged`.
+- **Severity Movement & Regression Triggers**:
+  - Tracks severity movement across `low` (1), `medium` (2), `high` (3).
+  - Severity increases (`low -> medium`, `medium -> high`, `low -> high`) are recorded as regressions.
+  - Newly introduced `high`-severity findings trigger `hasMeaningfulRegression = true`.
+- **Deterministic Signal Diffing & Neutral Unknown Rule**:
+  - Tracks signal transitions: `pass -> warn` (regression), `warn -> pass` (improvement), `unknown -> pass/warn` (`became_measured`), and `pass/warn -> unknown` (`became_unknown`).
+  - Transitions to or from `unknown` represent changes in evidence availability and are **never classified as regressions or penalties**.
+- **First-Audit Baseline State**:
+  - When `previousReport === null` (first successful audit for a page), `computeAuditDiff` returns an explicit baseline state (`isBaseline = true`, `hasPreviousReport = false`, `hasMeaningfulRegression = false`) with zero regressions.
+- **Observed vs Inferred Evidence Separation**:
+  - Every finding diff item, regression item, and improvement item preserves its `basis` (`"observed" | "inferred"`).
+  - The summary explicitly tallies `observedRegressionsCount` and `inferredRegressionsCount` to maintain evidence transparency.
+

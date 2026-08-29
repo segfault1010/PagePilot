@@ -141,9 +141,14 @@ This roadmap defines the evolution of PagePilot from a single-project MVP into a
     - Deterministic idempotency key strategy (`scheduled:${page.id}:${windowId}`) and pre-persisted `audit_run` (`invocation_type = 'scheduled'`, `triggered_by_user_id = null`).
     - Suppressed duplicate event emission when `isExisting === true` backed by PostgreSQL unique index `uq_audit_runs_idempotency`.
     - Dispatches `audit/requested` events, reusing the verified `execute-audit-workflow` without duplication.
-  - **Task 3.3 — Score & Finding Regression Diff Engine (`Planned`)**:
-    - Compare latest completed report against previous successful report.
-    - Calculate score difference, category changes, and newly introduced high-severity findings.
+  - **Task 3.3 — Score & Finding Regression Diff Engine (`Complete & Verified`)**:
+    - Pure, deterministic diff engine (`computeAuditDiff`) in `@pagepilot/audit-engine` comparing previous successful report against current successful report.
+    - Centralized regression thresholds: overall score drop $\ge 10$ points (`MEANINGFUL_OVERALL_SCORE_DROP_THRESHOLD`) and category score drop $\ge 15$ points (`MEANINGFUL_CATEGORY_SCORE_DROP_THRESHOLD`).
+    - Stable finding identity strategy based on sorted deterministic `signalIds` for observed findings and normalized title slugs for inferred findings.
+    - Severity transition tracking (`low <-> medium <-> high`) with escalation classified as regression.
+    - Signal-level diffing (`pass <-> warn`, `unknown <-> measured`) without false penalties for missing evidence.
+    - First-audit baseline state with zero false regressions and strict historical report immutability.
+    - Typed Zod contracts and schemas in `@pagepilot/contracts`.
 - **Must Include:**
   - Inngest durable workflows for scheduled weekly audits.
   - Idempotent workflow steps anchored on `audit_run_id`.

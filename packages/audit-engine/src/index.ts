@@ -97,3 +97,16 @@ export type {
   ScoredCategory,
   BuildReportParams,
 } from "./scoring/score-report.js";
+
+// Diff Engine
+export {
+  computeAuditDiff,
+  normalizeFindingTitleSlug,
+  buildFindingIdentityKey,
+  compareSeverity,
+} from "./diff/audit-diff.js";
+export type {
+  ComputeAuditDiffParams,
+  AuditDiffRunMeta,
+} from "./diff/audit-diff.js";
+
