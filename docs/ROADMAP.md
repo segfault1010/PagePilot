@@ -194,9 +194,24 @@ This roadmap defines the evolution of PagePilot from a single-project MVP into a
 ---
 
 ### Milestone 4: Collaboration & Prioritization
-- **Status:** `Planned`
+- **Status:** `Active` (Task 4.1 Data Model & Secure API Complete & Verified; Task 4.2 UI Backlog Planned)
 - **Product Outcome:** Audit findings become a prioritized work queue that teams can assign, discuss, and track to resolution.
 - **Dependencies:** Milestone 2, Milestone 3.
+- **Tasks:**
+  - **Task 4.1 — Collaboration & Prioritization Data Model + Secure API Foundation (`Complete & Verified`)**:
+    - Multi-tenant database migration `20260830120000_work_items_and_collaboration.sql` creating `public.work_items` and `public.work_item_activities` with explicit RLS policies for 4 roles (`owner`, `admin`, `member`, `viewer`).
+    - Database-level assignee authorization via trigger `trg_check_work_item_assignee` enforcing that assignees must belong to the tenant organization.
+    - Partial unique indexes (`uq_work_items_page_finding`, `uq_work_items_page_recommendation`) on `(monitored_page_id, finding_id / recommendation_id)` preventing duplicate tracking on the same landing page, with API surfacing structured `409 CONFLICT`.
+    - Atomic PostgreSQL stored functions `public.create_work_item_atomic` and `public.update_work_item_atomic` guaranteeing transactional work item mutation and append-only activity trail logging.
+    - Immutable historical report guarantee: underlying `findings`, `recommendations`, `audit_reports`, and `score_snapshots` remain 100% untouched when work items are created, modified, or resolved.
+    - Zod schemas and TypeScript contracts exported from `@pagepilot/contracts` (`workItemSchema`, `workItemActivitySchema`, `createWorkItemSchema`, `updateWorkItemSchema`, `workItemFiltersSchema`).
+    - Authenticated API router mounted at `/api/projects/:projectId/work-items` supporting full CRUD, filtering, assignee/source validation, and safe 404 behavior for cross-tenant or mismatched IDs.
+  - **Task 4.2 — Work Items UI, Backlog Views, & Assignee Actions (`Planned`)**:
+    - Prioritized work queue UI with filtering by status, assignee, and UX category.
+    - Actionable work item cards with status picker, assignee assignment, tags, and notes.
+    - Dedicated resolution modal capturing resolution rationale.
+  - **Task 4.3 — Read-Only Shared Report Links (`Planned`)**:
+    - Secure, revocable public read-only links for sharing audit evidence with external stakeholders.
 - **Must Include:**
   - Finding work item statuses: `open`, `in_progress`, `resolved`, `dismissed`.
   - Work item metadata: assignee, note, tag, resolution rationale, actor audit logs.

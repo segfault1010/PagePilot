@@ -493,3 +493,175 @@ export type PersistedAuditReportResponse = z.infer<
   typeof persistedAuditReportResponseSchema
 >;
 
+// ---------------------------------------------------------------------------
+// Work Items & Collaboration Schemas
+// ---------------------------------------------------------------------------
+
+export const WORK_ITEM_STATUSES = [
+  "open",
+  "in_progress",
+  "resolved",
+  "dismissed",
+] as const;
+export const workItemStatusSchema = z.enum(WORK_ITEM_STATUSES);
+export type WorkItemStatus = z.infer<typeof workItemStatusSchema>;
+
+export const WORK_ITEM_SOURCE_TYPES = ["finding", "recommendation"] as const;
+export const workItemSourceTypeSchema = z.enum(WORK_ITEM_SOURCE_TYPES);
+export type WorkItemSourceType = z.infer<typeof workItemSourceTypeSchema>;
+
+export const WORK_ITEM_ACTIONS = [
+  "created",
+  "status_changed",
+  "assigned",
+  "unassigned",
+  "updated",
+  "notes_updated",
+] as const;
+export const workItemActionSchema = z.enum(WORK_ITEM_ACTIONS);
+export type WorkItemAction = z.infer<typeof workItemActionSchema>;
+
+export const workItemSchema = z.object({
+  id: z.string().uuid(),
+  organizationId: z.string().uuid(),
+  projectId: z.string().uuid(),
+  monitoredPageId: z.string().uuid(),
+  auditRunId: z.string().uuid().nullable().optional(),
+  auditReportId: z.string().uuid().nullable().optional(),
+  sourceType: workItemSourceTypeSchema,
+  findingId: z.string().uuid().nullable().optional(),
+  recommendationId: z.string().uuid().nullable().optional(),
+  title: z.string().min(1),
+  description: z.string().nullable().optional(),
+  category: auditCategorySchema.nullable().optional(),
+  severity: severitySchema.nullable().optional(),
+  status: workItemStatusSchema.default("open"),
+  assigneeId: z.string().uuid().nullable().optional(),
+  notes: z.string().nullable().optional(),
+  tags: z.array(z.string()).default([]),
+  resolutionRationale: z.string().nullable().optional(),
+  resolvedAt: z.string().datetime().nullable().optional(),
+  resolvedByUserId: z.string().uuid().nullable().optional(),
+  createdByUserId: z.string().uuid().nullable().optional(),
+  lastModifiedByUserId: z.string().uuid().nullable().optional(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+export type WorkItem = z.infer<typeof workItemSchema>;
+
+export const workItemActivitySchema = z.object({
+  id: z.string().uuid(),
+  workItemId: z.string().uuid(),
+  organizationId: z.string().uuid(),
+  projectId: z.string().uuid(),
+  actorUserId: z.string().uuid().nullable().optional(),
+  action: workItemActionSchema,
+  fromStatus: workItemStatusSchema.nullable().optional(),
+  toStatus: workItemStatusSchema.nullable().optional(),
+  details: z.record(z.string(), z.any()).default({}),
+  createdAt: z.string().datetime(),
+});
+export type WorkItemActivity = z.infer<typeof workItemActivitySchema>;
+
+export const createWorkItemSchema = z
+  .object({
+    sourceType: workItemSourceTypeSchema,
+    findingId: z.string().uuid("Invalid finding ID.").optional(),
+    recommendationId: z.string().uuid("Invalid recommendation ID.").optional(),
+    monitoredPageId: z.string().uuid("Invalid monitored page ID.").optional(),
+    title: z
+      .string()
+      .trim()
+      .min(1, "Title cannot be empty.")
+      .max(300, "Title must be 300 characters or fewer.")
+      .optional(),
+    description: z
+      .string()
+      .trim()
+      .max(5000, "Description must be 5000 characters or fewer.")
+      .optional()
+      .nullable(),
+    category: auditCategorySchema.optional().nullable(),
+    severity: severitySchema.optional().nullable(),
+    status: workItemStatusSchema.default("open").optional(),
+    assigneeId: z.string().uuid("Invalid assignee ID.").nullable().optional(),
+    notes: z
+      .string()
+      .trim()
+      .max(5000, "Notes must be 5000 characters or fewer.")
+      .nullable()
+      .optional(),
+    tags: z
+      .array(z.string().trim().max(50, "Tag must be 50 characters or fewer."))
+      .max(20, "Cannot exceed 20 tags.")
+      .default([])
+      .optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.sourceType === "finding" && !data.findingId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "findingId is required when sourceType is 'finding'.",
+        path: ["findingId"],
+      });
+    }
+    if (data.sourceType === "recommendation" && !data.recommendationId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "recommendationId is required when sourceType is 'recommendation'.",
+        path: ["recommendationId"],
+      });
+    }
+  });
+export type CreateWorkItemInput = z.input<typeof createWorkItemSchema>;
+export type CreateWorkItemOutput = z.output<typeof createWorkItemSchema>;
+
+export const updateWorkItemSchema = z.object({
+  status: workItemStatusSchema.optional(),
+  assigneeId: z.string().uuid("Invalid assignee ID.").nullable().optional(),
+  notes: z
+    .string()
+    .trim()
+    .max(5000, "Notes must be 5000 characters or fewer.")
+    .nullable()
+    .optional(),
+  tags: z
+    .array(z.string().trim().max(50, "Tag must be 50 characters or fewer."))
+    .max(20, "Cannot exceed 20 tags.")
+    .optional(),
+  resolutionRationale: z
+    .string()
+    .trim()
+    .max(2000, "Resolution rationale must be 2000 characters or fewer.")
+    .nullable()
+    .optional(),
+});
+export type UpdateWorkItemInput = z.input<typeof updateWorkItemSchema>;
+export type UpdateWorkItemOutput = z.output<typeof updateWorkItemSchema>;
+
+export const workItemResponseSchema = z.object({
+  workItem: workItemSchema,
+  activities: z.array(workItemActivitySchema).optional(),
+});
+export type WorkItemResponse = z.infer<typeof workItemResponseSchema>;
+
+export const workItemListResponseSchema = z.object({
+  workItems: z.array(workItemSchema),
+  total: z.number().int().min(0),
+});
+export type WorkItemListResponse = z.infer<typeof workItemListResponseSchema>;
+
+export const workItemFiltersSchema = z.object({
+  pageId: z.string().uuid().optional(),
+  status: workItemStatusSchema.optional(),
+  assigneeId: z.string().uuid().optional(),
+  sourceType: workItemSourceTypeSchema.optional(),
+  category: auditCategorySchema.optional(),
+  severity: severitySchema.optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50).optional(),
+  offset: z.coerce.number().int().min(0).default(0).optional(),
+});
+export type WorkItemFilters = z.infer<typeof workItemFiltersSchema>;
+
+

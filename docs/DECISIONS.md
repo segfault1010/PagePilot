@@ -368,3 +368,27 @@ To visualize landing page UX health trajectories and category movements over tim
   - Complete ARIA labelling: `role="region"`, `aria-label="UX Score Trend and Historical Trajectory"`, and `role="img"` on SVG with narrative description.
   - Focusable keyboard-navigable dots with `tabIndex={0}` and screen-reader accessible attributes.
   - Respects `@media (prefers-reduced-motion)` through clean CSS transitions and zero jarring animations.
+
+## D54 — Collaboration & Prioritization Data Model, Mutable Work Items vs Immutable Evidence, Database Assignee Authorization, and Atomic Activity Trail (Milestone 4)
+
+To turn persisted audit findings and recommendations into tenant-scoped collaborative work items without changing historical audit reports:
+- **Clean Separation: Mutable Work Items vs Immutable Audit Evidence**:
+  - `findings`, `recommendations`, `audit_reports`, and `score_snapshots` remain **100% immutable historical evidence**.
+  - Collaborative actions create separate mutable records in `public.work_items`, linked via `source_type` (`'finding'` or `'recommendation'`), `finding_id`, and `recommendation_id`.
+  - Resolving or updating a work item never mutates the underlying audit finding row.
+- **Database-Level Assignee Authorization**:
+  - To prevent crafted requests or direct database updates from assigning work items to cross-tenant or arbitrary users, database trigger `trg_check_work_item_assignee` and function `public.check_work_item_assignee_org()` enforce that `assignee_id` MUST be a valid member of `organization_id` in `public.memberships`.
+- **Work-Item Deduplication & Unique Partial Indexes**:
+  - Created unique partial indexes `uq_work_items_page_finding` on `(monitored_page_id, finding_id) WHERE finding_id IS NOT NULL` and `uq_work_items_page_recommendation` on `(monitored_page_id, recommendation_id) WHERE recommendation_id IS NOT NULL`.
+  - The API explicitly catches constraint violations (Postgres code `23505`) and surfaces a structured `409 CONFLICT` envelope (`API_ERROR_CODES.conflict`) rather than an unclassified 500.
+- **Atomic PostgreSQL RPCs & Activity Trail**:
+  - `public.create_work_item_atomic` and `public.update_work_item_atomic` guarantee that work item mutations and corresponding `public.work_item_activities` audit records commit together in a single PostgreSQL transaction.
+  - `work_item_activities` preserves an immutable append-only trail of mutations (`created`, `status_changed`, `assigned`, `unassigned`, `updated`) capturing actor, timestamp, previous/new status, and details.
+- **Row-Level Security (RLS) & Role Matrix**:
+  - RLS is strictly enabled and forced on `work_items` and `work_item_activities`.
+  - `owner`, `admin`, `member`: full CRUD within their verified organization.
+  - `viewer`: read-only access (`SELECT` allowed; mutations return `403 FORBIDDEN`).
+  - Cross-tenant queries return safe `404 NOT_FOUND` to prevent resource probing.
+- **Contracts Synchronization**:
+  - Added `workItemSchema`, `workItemActivitySchema`, `createWorkItemSchema`, `updateWorkItemSchema`, `workItemFiltersSchema`, and responses in `@pagepilot/contracts` with strict note/tag bounds (notes $\le 5000$ chars, tags $\le 20$ items $\times 50$ chars, rationale $\le 2000$ chars).
+

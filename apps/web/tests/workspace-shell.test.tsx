@@ -7,6 +7,7 @@ import App from "../src/App";
 const mockGetSession = vi.fn();
 const mockOnAuthStateChange = vi.fn();
 const mockSignOut = vi.fn();
+const mockListProjects = vi.fn();
 
 vi.mock("../src/features/auth/supabase-client.js", () => ({
   getSupabaseClient: vi.fn(() => ({
@@ -21,21 +22,7 @@ vi.mock("../src/features/auth/supabase-client.js", () => ({
 
 // Mock Projects & Audits API
 vi.mock("../src/features/projects/api.js", () => ({
-  listProjects: vi.fn().mockResolvedValue({
-    projects: [
-      {
-        id: "c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33",
-        organizationId: "d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44",
-        name: "Growth Project",
-        domain: "growth.app",
-        timezone: "UTC",
-        goals: "Boost conversion",
-        createdBy: "e0eebc99-9c0b-4ef8-bb6d-6bb9bd380a55",
-        createdAt: "2026-08-27T12:00:00.000Z",
-        updatedAt: "2026-08-27T12:00:00.000Z",
-      },
-    ],
-  }),
+  listProjects: (...args: any[]) => mockListProjects(...args),
   listMonitoredPages: vi.fn().mockResolvedValue({ pages: [] }),
   getProject: vi.fn(),
   getMonitoredPage: vi.fn(),
@@ -51,6 +38,21 @@ describe("Workspace Shell & App Integration", () => {
     mockOnAuthStateChange.mockReturnValue({
       data: { subscription: { unsubscribe: vi.fn() } },
     });
+    mockListProjects.mockResolvedValue({
+      projects: [
+        {
+          id: "c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33",
+          organizationId: "d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44",
+          name: "Growth Project",
+          domain: "growth.app",
+          timezone: "UTC",
+          goals: "Boost conversion",
+          createdBy: "e0eebc99-9c0b-4ef8-bb6d-6bb9bd380a55",
+          createdAt: "2026-08-27T12:00:00.000Z",
+          updatedAt: "2026-08-27T12:00:00.000Z",
+        },
+      ],
+    });
   });
 
   afterEach(() => {
@@ -63,8 +65,8 @@ describe("Workspace Shell & App Integration", () => {
     render(<App />);
 
     expect(await screen.findByRole("button", { name: /analyze website/i })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /sign in/i })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /get started/i })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: /sign in/i })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: /get started/i })).toBeTruthy();
     expect(screen.queryByText(/workspace/i)).toBeNull();
   });
 
@@ -140,37 +142,59 @@ describe("Workspace Shell & App Integration", () => {
       },
     });
 
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        workspace: {
-          user: { id: "user-123", email: "growth@company.com" },
-          profile: {
-            id: "user-123",
-            email: "growth@company.com",
-            fullName: "Alex",
-            avatarUrl: null,
-            createdAt: "2026-08-27T12:00:00.000Z",
-            updatedAt: "2026-08-27T12:00:00.000Z",
-          },
-          organization: {
-            id: "d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44",
-            name: "Growth Ops",
-            slug: "growth-ops",
-            createdAt: "2026-08-27T12:00:00.000Z",
-            updatedAt: "2026-08-27T12:00:00.000Z",
-          },
-          membership: {
-            id: "m-123",
-            organizationId: "d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44",
-            userId: "user-123",
+    global.fetch = vi.fn().mockImplementation(async (url: string) => {
+      if (typeof url === "string" && url.includes("/api/projects")) {
+        return {
+          ok: true,
+          json: async () => ({
+            projects: [
+              {
+                id: "p-123",
+                organizationId: "d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44",
+                name: "Growth Project",
+                domain: "growth.com",
+                timezone: "UTC",
+                goals: "Improve conversions",
+                createdAt: "2026-08-27T12:00:00.000Z",
+                updatedAt: "2026-08-27T12:00:00.000Z",
+              },
+            ],
+            total: 1,
+          }),
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          workspace: {
+            user: { id: "user-123", email: "growth@company.com" },
+            profile: {
+              id: "user-123",
+              email: "growth@company.com",
+              fullName: "Alex",
+              avatarUrl: null,
+              createdAt: "2026-08-27T12:00:00.000Z",
+              updatedAt: "2026-08-27T12:00:00.000Z",
+            },
+            organization: {
+              id: "d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44",
+              name: "Growth Ops",
+              slug: "growth-ops",
+              createdAt: "2026-08-27T12:00:00.000Z",
+              updatedAt: "2026-08-27T12:00:00.000Z",
+            },
+            membership: {
+              id: "m-123",
+              organizationId: "d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44",
+              userId: "user-123",
+              role: "owner",
+              createdAt: "2026-08-27T12:00:00.000Z",
+              updatedAt: "2026-08-27T12:00:00.000Z",
+            },
             role: "owner",
-            createdAt: "2026-08-27T12:00:00.000Z",
-            updatedAt: "2026-08-27T12:00:00.000Z",
           },
-          role: "owner",
-        },
-      }),
+        }),
+      };
     });
 
     render(<App />);

@@ -74,6 +74,7 @@ import {
 } from "@pagepilot/workflows";
 import type { WorkflowPersistenceStore } from "@pagepilot/workflows";
 import { SupabaseWorkflowPersistenceStore } from "../audits/supabase-workflow-store.js";
+import type { WorkItemsStore } from "../work-items/work-items-store.js";
 
 export interface AppOptions extends AuthMiddlewareOptions {
   /** Injectable for tests; production uses the real safe-fetch pipeline. */
@@ -82,6 +83,8 @@ export interface AppOptions extends AuthMiddlewareOptions {
   getProjectsStore?: (req: Request) => ProjectsStore;
   /** Injectable for tests; production instantiates SupabaseAuditPersistenceStore with user authToken. */
   getAuditStore?: (req: Request) => AuditPersistenceStore;
+  /** Injectable for tests; production instantiates SupabaseWorkItemsStore with user authToken. */
+  getWorkItemsStore?: (req: Request) => WorkItemsStore;
   /** Injectable for tests; Inngest client */
   inngestClient?: Inngest;
   /** Injectable for tests; Inngest workflow functions */
@@ -322,6 +325,7 @@ export function createApp(options: AppOptions = {}): Express {
     createProjectsRouter({
       getStore: options.getProjectsStore,
       getAuditStore: options.getAuditStore,
+      getWorkItemsStore: options.getWorkItemsStore,
       analyzeUrl: options.analyzeUrl,
     }),
   );

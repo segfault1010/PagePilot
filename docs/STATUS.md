@@ -1,67 +1,59 @@
 # PagePilot — Current Status
 
 **Last Updated:** August 2026  
-**Current Milestone:** Milestone 3 — Continuous Monitoring & Alerts (Tasks 3.1–3.6 Application, Contracts, Tests, Build, & Static SQL/RLS COMPLETE & VERIFIED; Supabase Runtime RLS, Inngest Cloud Dispatch, & Real Transactional Email PENDING STAGING)  
+**Current Milestone:** Milestone 4 — Collaboration & Prioritization (Task 4.1 Data Model & Secure API Foundation COMPLETE & VERIFIED; Supabase Runtime RLS PENDING STAGING)  
 **Previous Milestones:** 
 - Milestone 0 — Product Foundation & Monorepo Setup (Complete & Verified)
 - Milestone 1 — Core Audit MVP (Complete & Verified)
 - Milestone 2 — Accounts & Projects (Tasks 2.1–2.5 Implementation Complete & Verified; Runtime RLS Pending Staging)
+- Milestone 3 — Continuous Monitoring & Alerts (Tasks 3.1–3.6 Implementation Complete & Verified; Runtime RLS, Inngest Cloud, & Real Email Pending Staging)
 
 ---
 
 ## 1. Verified Current State
 
-The PagePilot monorepo architecture, core landing-page audit MVP, multi-tenant persistence foundation, workspace UI, **Milestone 3 Task 3.1 Inngest Setup & Baseline Audit Workflow**, **Milestone 3 Task 3.2 Weekly Scheduled Audit Workflow**, **Milestone 3 Task 3.3 Score & Finding Regression Diff Engine**, **Milestone 3 Task 3.4 Alert Rules & Evaluation**, **Milestone 3 Task 3.5 Alert Persistence & Delivery**, and **Milestone 3 Task 3.6 Trend Dashboard & Score History UI** are **implemented, statically validated, and test-verified**.
+The PagePilot monorepo architecture, core landing-page audit MVP, multi-tenant persistence foundation, workspace UI, continuous monitoring workflows & alerts (Tasks 3.1–3.6), and **Milestone 4 Task 4.1 Collaboration & Prioritization Data Model + Secure API Foundation** are **implemented, statically validated, and test-verified**.
 
 ### Implementation & Verification Status Breakdown:
-1. **Application / Contracts / Tests / Build:** `COMPLETE & VERIFIED` (463 tests passing across 51 test files, 0 typecheck errors, production build verified).
-2. **Supabase Migration Schema & Static RLS:** `COMPLETE & VERIFIED` (15 automated SQL AST/regex validation tests covering all 12 tables, RLS force rules, foreign keys, cascades, unique indexes, and RPC functions).
+1. **Application / Contracts / Tests / Build:** `COMPLETE & VERIFIED` (483 tests passing across 52 test files, 0 typecheck errors, production build verified).
+2. **Supabase Migration Schema & Static RLS:** `COMPLETE & VERIFIED` (16 automated SQL AST/regex validation tests covering all 14 tables, RLS force rules, foreign keys, cascades, partial unique indexes, trigger invariants, and atomic RPC functions).
 3. **PagePilot Supabase Runtime RLS:** `PENDING STAGING` (Supabase MCP discovery inspected the active user account and confirmed only unrelated external projects exist; external customer databases were preserved without mutation. Dedicated PagePilot staging database runtime RLS execution is pending staging environment deployment).
 4. **Inngest Runtime & Cloud Dispatch:** `PENDING STAGING` (Serve endpoint `/api/inngest` and 3 workflows registered; live Inngest background server execution pending cloud staging).
 5. **Real Transactional Email Delivery:** `PENDING STAGING` (Sanitized HTML/text template builder and mock/console providers verified; real transactional provider dispatch to live inboxes pending staging).
 
 ### Monorepo Structure (`pnpm`)
-- `supabase/migrations/`: Multi-tenant schema migrations (`20260827120000_init_multi_tenant_schema.sql`, `20260827130000_monitored_page_uniqueness.sql`, `20260827140000_audit_persistence_and_idempotency.sql`, `20260829120000_alerts_and_delivery.sql`) defining 12 core tables (`profiles`, `organizations`, `memberships`, `projects`, `monitored_pages`, `audit_runs`, `audit_reports`, `score_snapshots`, `findings`, `recommendations`, `alerts`, `alert_deliveries`), `latest_successful_audit_run_id`, `idempotency_key` unique constraints (`uq_audit_runs_idempotency`), alert deduplication unique index (`uq_alerts_run_dedup`), alert delivery key unique index (`uq_alert_deliveries_key`), atomic PostgreSQL RPC `persist_completed_audit_report`, and explicit RLS policies for 4 roles (`owner`, `admin`, `member`, `viewer`).
-- `packages/contracts/` (`@pagepilot/contracts`): Shared Zod schemas, TypeScript types, `API_ERROR_CODES`, `enforceUrlPolicy`, `normalizeDomain`, `getWeeklyWindow` timezone helper, database entity contracts, version constants (`REPORT_SCHEMA_VERSION = "1.0.0"`, `AUDIT_ENGINE_CHECK_VERSION = "1.0.0"`, `AUDIT_ENGINE_PROMPT_VERSION = "1.0.0"`, `AUDIT_ENGINE_SCORING_VERSION = "1.0.0"`, `DIFF_SCHEMA_VERSION = "1.0.0"`, `ALERT_SCHEMA_VERSION = "1.0.0"`), audit request & response schemas, Inngest event contracts (`ALERT_CREATED_EVENT`), regression diff contracts (`AuditDiff`), alert contracts (`AlertDecision`, `AlertEntity`, `AlertDeliveryEntity`, `buildAlertDeliveryKey`, `alertCreatedPayloadSchema`), audit history category scores mapping. 97 tests passing across 12 test files.
+- `supabase/migrations/`: Multi-tenant schema migrations (`20260827120000_init_multi_tenant_schema.sql`, `20260827130000_monitored_page_uniqueness.sql`, `20260827140000_audit_persistence_and_idempotency.sql`, `20260829120000_alerts_and_delivery.sql`, `20260830120000_work_items_and_collaboration.sql`) defining 14 core tables (`profiles`, `organizations`, `memberships`, `projects`, `monitored_pages`, `audit_runs`, `audit_reports`, `score_snapshots`, `findings`, `recommendations`, `alerts`, `alert_deliveries`, `work_items`, `work_item_activities`), assignee organization membership trigger `trg_check_work_item_assignee`, partial unique indexes `uq_work_items_page_finding` and `uq_work_items_page_recommendation`, atomic PostgreSQL RPCs (`persist_completed_audit_report`, `create_work_item_atomic`, `update_work_item_atomic`), and explicit RLS policies for 4 roles (`owner`, `admin`, `member`, `viewer`).
+- `packages/contracts/` (`@pagepilot/contracts`): Shared Zod schemas, TypeScript types, `API_ERROR_CODES`, `enforceUrlPolicy`, `normalizeDomain`, `getWeeklyWindow` timezone helper, database entity contracts, version constants (`REPORT_SCHEMA_VERSION = "1.0.0"`, `AUDIT_ENGINE_CHECK_VERSION = "1.0.0"`, `AUDIT_ENGINE_PROMPT_VERSION = "1.0.0"`, `AUDIT_ENGINE_SCORING_VERSION = "1.0.0"`, `DIFF_SCHEMA_VERSION = "1.0.0"`, `ALERT_SCHEMA_VERSION = "1.0.0"`), audit request & response schemas, Inngest event contracts (`ALERT_CREATED_EVENT`), regression diff contracts (`AuditDiff`), alert contracts (`AlertDecision`, `AlertEntity`, `AlertDeliveryEntity`), and work item contracts (`workItemSchema`, `workItemActivitySchema`, `createWorkItemSchema`, `updateWorkItemSchema`, `workItemFiltersSchema`, `WORK_ITEM_STATUSES`, `WORK_ITEM_SOURCE_TYPES`, `WORK_ITEM_ACTIONS`). 102 tests passing across 12 test files.
 - `packages/audit-engine/` (`@pagepilot/audit-engine`): SSRF-safe fetch (`ipaddr.js`, all-records DNS lookup, pinned socket connection), Cheerio snapshot extraction, deterministic checks, bounded Gemini model input serialization, structured output adapter, schema validation, signal reference integrity verification, server-side scoring, and pure deterministic diff engine (`computeAuditDiff`). 141 tests passing across 10 test files.
 - `packages/workflows/` (`@pagepilot/workflows`): Focused Inngest durable workflows package owning workflow definitions (`execute-audit-workflow`, `weekly-audit-scheduler`, `deliver-alert-notification`), notification templates (`buildAlertEmailContent`), notification providers (`MockEmailNotificationProvider`, `ConsoleEmailNotificationProvider`), Inngest client, narrow persistence interface (`WorkflowPersistenceStore`), and pure alert evaluation engine (`evaluateAuditAlerts`, `evaluateScanFailureAlert`). 42 tests passing across 5 test files.
 - `apps/web/` (`@pagepilot/web`): Vite + React 19 + TypeScript + Tailwind CSS v4 client application (`src/App.tsx`, `src/features/analysis/`, `src/features/auth/`, `src/features/projects/`, `src/features/audits/`, `src/features/workspace/`). Includes browser-safe Supabase client, `AuthProvider` (`useAuth`), accessible `<AuthModal />`, `<AuthNav />`, typed project/page API client, typed audit persistence API client, accessible SVG `<ScoreTrendChart />` component, and full workspace experience (`WorkspaceShell`, `ProjectList`, `ProjectDetail`, `PageDetail`, `HistoricalReportView`, accessible modals). 108 tests passing across 16 test files.
-- `apps/api/` (`@pagepilot/api`): Express API application on Vercel Node runtime (`src/http/app.ts`, `src/auth/`, `src/projects/`, `src/audits/`, `src/index.ts`, `api/analyze.ts`). Includes server-side token verification, `requireAuth`, `requireWorkspace`, `requireOrgRole`, idempotent first-workspace provisioning, project/page CRUD, full audit persistence & history endpoints with `categoryScores` projection, `SupabaseWorkflowPersistenceStore` implementation, and Inngest serve handler mounted at `/api/inngest` exposing all 3 durable workflows. 75 tests passing across 8 test files.
+- `apps/api/` (`@pagepilot/api`): Express API application on Vercel Node runtime (`src/http/app.ts`, `src/auth/`, `src/projects/`, `src/audits/`, `src/work-items/`, `src/index.ts`, `api/analyze.ts`). Includes server-side token verification, `requireAuth`, `requireWorkspace`, `requireOrgRole`, idempotent first-workspace provisioning, project/page CRUD, full audit persistence & history endpoints, work item CRUD router (`/api/projects/:projectId/work-items`) with database assignee verification, atomic activity logging, duplicate 409 conflict handling, `SupabaseWorkflowPersistenceStore` implementation, and Inngest serve handler mounted at `/api/inngest`. 90 tests passing across 9 test files.
 - Root Vercel adapter (`api/analyze.ts`): Minimal pass-through handler delegating to `@pagepilot/api`, with `vercel.json` routing `outputDirectory: "apps/web/dist"`.
-- Total workspace test suite: **463 tests passing across 51 test files**.
+- Total workspace test suite: **483 tests passing across 52 test files**.
 
-### Verified Core Capabilities & Milestone 3 Foundation
+### Verified Core Capabilities & Milestone 4 Task 4.1 Foundation
+- **Collaboration & Prioritization Data Model (Task 4.1):**
+  - Multi-tenant database migration `20260830120000_work_items_and_collaboration.sql` creating `public.work_items` and `public.work_item_activities` with full RLS policy coverage.
+  - Separate mutable work item model referencing immutable `findings` and `recommendations`.
+  - Database trigger `trg_check_work_item_assignee` enforcing that `assignee_id` MUST be a valid member of `organization_id` in `public.memberships`.
+  - Partial unique indexes (`uq_work_items_page_finding`, `uq_work_items_page_recommendation`) preventing duplicate tracking on the same landing page, with API surfacing structured `409 CONFLICT`.
+  - Atomic PostgreSQL RPCs `create_work_item_atomic` and `update_work_item_atomic` committing mutations and append-only activity trail entries in a single transaction.
+  - Complete status lifecycle: `open`, `in_progress`, `resolved`, `dismissed` with resolution rationale tracking.
+  - Role-based authorization matrix: `owner`, `admin`, `member` have CRUD; `viewer` is read-only (`SELECT` allowed; mutations return `403 FORBIDDEN`). Cross-tenant requests return safe `404 NOT_FOUND`.
 - **Trend Dashboard & Score History UI (Task 3.6):**
   - Native accessible SVG `<ScoreTrendChart />` component rendering chronological UX score trajectory with area fill, hover tooltips, and focus rings.
   - Category trajectory cards for all 7 UX dimensions with current scores, progress indicators, and deltas vs previous audit.
-  - Robust handling of single baseline audit and empty history states without false deltas.
-  - Zero heavy third-party chart dependencies, full keyboard navigation, screen reader ARIA regions, and reduced-motion compatibility.
 - **Alert Persistence & Delivery Workflow (Task 3.5):**
   - Durable PostgreSQL schema for `public.alerts` and `public.alert_deliveries` with explicit RLS and unique deduplication indexes.
-  - Pure deterministic email renderer (`buildAlertEmailContent`) producing both semantic HTML and plain text with zero secrets and strict HTML escaping.
-  - Pluggable `NotificationProvider` abstraction with test mock (`MockEmailNotificationProvider`) and console provider.
-  - Integrated Step 4 (`evaluate-and-dispatch-alerts`) into `createAuditWorkflow`, calculating diff vs previous report, evaluating alerts, persisting via `persistAlert`, and dispatching `alert/created`.
-  - State-aware 24-hour suppression: identical ongoing regressions within 24h are suppressed without duplicate alerts, while new or worsened regressions proceed.
-  - Durable Inngest function `deliver-alert-notification` (`createAlertDeliveryWorkflow`): validates tenant isolation, resolves organization `owner` and `admin` recipients, enforces `delivery_key` idempotency, and delivers transactional notifications.
+  - Pure deterministic email renderer (`buildAlertEmailContent`) producing both semantic HTML and plain text with zero secrets.
 - **Alert Rules & Evaluation (Task 3.4):**
-  - Pure, deterministic, side-effect free alert evaluation engine (`evaluateAuditAlerts`, `evaluateScanFailureAlert`) in `@pagepilot/workflows`.
-  - Centralized alert trigger evaluation matching roadmap and Task 3.3 thresholds (overall score drop $\ge 10$, category score drop $\ge 15$, new high-severity finding, finding severity escalation, signal regressed, repeated scan failures $\ge 3$).
-  - Stable logical deduplication key strategy (`alert:${monitoredPageId}:${ruleType}${targetId ? `:${targetId}` : ""}`).
-  - Baseline audits (`isBaseline: true`) and neutral unknown signal transitions produce **zero false alerts**.
+  - Pure deterministic alert evaluation engine (`evaluateAuditAlerts`, `evaluateScanFailureAlert`).
 - **Score & Finding Regression Diff Engine (Task 3.3):**
-  - Pure, deterministic diff engine (`computeAuditDiff`) comparing previous successful audit report against current successful report.
-  - Strict historical report immutability guarantee.
-  - Finding identity strategy based on sorted `signalIds` for observed findings and normalized title slugs for inferred findings.
-  - Severity movement tracking with neutral handling of unknown signal transitions.
+  - Pure deterministic diff engine (`computeAuditDiff`) comparing previous against current audit reports with immutable evidence preservation.
 - **Weekly Scheduled Audit Workflow (Task 3.2):**
-  - Durable `weekly-audit-scheduler` Inngest function (`createWeeklyScheduler`) supporting dual triggers (Cron: `0 0 * * 1` and Event: `audit/schedule-weekly`).
-  - Deterministic timezone-aware ISO week calculation (`getWeeklyWindow`).
-  - Pre-persisting `audit_run` with deterministic idempotency key (`scheduled:${page.id}:${windowId}`) and PostgreSQL unique index `uq_audit_runs_idempotency`.
+  - Durable `weekly-audit-scheduler` Inngest function (`createWeeklyScheduler`) with timezone-aware ISO week calculation and idempotent pre-persistence.
 - **Inngest Setup & Baseline Audit Workflow (Task 3.1):**
-  - Modular, decoupled `@pagepilot/workflows` package.
-  - Strict server-only secret boundary.
-  - Durable `execute-audit-workflow` function (`createAuditWorkflow`) with isolated multi-step execution.
-  - Failed runs preserve `latest_successful_audit_run_id` intact.
+  - Decoupled `@pagepilot/workflows` package with multi-step `execute-audit-workflow` function.
 
 ---
 
@@ -70,16 +62,16 @@ The PagePilot monorepo architecture, core landing-page audit MVP, multi-tenant p
 | Quality Gate | Command | Result | Status |
 |---|---|---|---|
 | **Workspace Typecheck** | `pnpm run typecheck` | 0 errors across all workspace projects | **PASS** |
-| **Contracts Tests** | `pnpm vitest run packages/contracts/tests/` | 97 tests passing across 12 test files | **PASS** |
+| **Contracts Tests** | `pnpm vitest run packages/contracts/tests/` | 102 tests passing across 12 test files | **PASS** |
 | **Audit Engine Tests** | `pnpm vitest run packages/audit-engine/tests/` | 141 tests passing across 10 test files | **PASS** |
 | **Workflows Tests** | `pnpm vitest run packages/workflows/tests/` | 42 tests passing across 5 test files | **PASS** |
 | **Web App Tests** | `pnpm vitest run apps/web/tests/` | 108 tests passing across 16 test files | **PASS** |
-| **API Tests** | `pnpm vitest run apps/api/tests/` | 75 tests passing across 8 test files | **PASS** |
-| **Full Monorepo Suite** | `pnpm test` | 463 tests passing across 51 test files | **PASS** |
-| **Production Build** | `pnpm run build` | Built `apps/web/dist/` (JS 580.3 kB / gzip 156.7 kB, CSS 40.9 kB / gzip 7.5 kB) | **PASS** |
+| **API Tests** | `pnpm vitest run apps/api/tests/` | 90 tests passing across 9 test files | **PASS** |
+| **Full Monorepo Suite** | `pnpm test` | 483 tests passing across 52 test files | **PASS** |
+| **Production Build** | `pnpm run build` | Built `apps/web/dist/` (JS 583.8 kB / gzip 157.2 kB, CSS 41.0 kB / gzip 7.5 kB) | **PASS** |
 | **Secret Leakage Review** | Ripgrep on `apps/web/dist/` | Zero instances of `SUPABASE_SERVICE_ROLE_KEY`, `GEMINI_API_KEY`, `INNGEST_SIGNING_KEY`, `INNGEST_EVENT_KEY`, or server secrets | **PASS** |
-| **Live Vercel Dev & Gemini Verification** | `pnpm run verify:gemini` | `POST /api/analyze` against `example.com` returns contract-valid report via `@pagepilot/audit-engine` (overallScore: 58) | **PASS** |
-| **Static Supabase Schema & SQL RLS Verification** | `pnpm vitest run packages/contracts/tests/migration-schema.test.ts` | 15 tests validating table definitions, RLS forced policies, foreign keys, indexes, and RPC functions | **PASS** |
+| **Live Vercel Dev & Gemini Verification** | `pnpm run verify:gemini` | `POST /api/analyze` against `example.com` returns contract-valid report via `@pagepilot/audit-engine` (overallScore: 64) | **PASS** |
+| **Static Supabase Schema & SQL RLS Verification** | `pnpm vitest run packages/contracts/tests/migration-schema.test.ts` | 16 tests validating table definitions, RLS forced policies, foreign keys, indexes, triggers, and RPC functions | **PASS** |
 | **Runtime PagePilot Database RLS Verification** | Staging Supabase Instance | Supabase MCP inspected available account; no dedicated PagePilot remote project is provisioned yet, and external customer databases were preserved without mutation | **PENDING STAGING** |
 | **Runtime Inngest Cloud Workflow Execution** | Staging Inngest Server | 3-workflow serve endpoint introspection & mock execution verified; live Inngest cloud dispatch pending staging environment | **PENDING STAGING** |
 | **Real Transactional Email Notification Dispatch** | Staging Transactional Provider | HTML/plain-text rendering & mock/console providers verified; live external SMTP/transactional dispatch pending staging environment | **PENDING STAGING** |
@@ -93,10 +85,10 @@ The PagePilot monorepo architecture, core landing-page audit MVP, multi-tenant p
 - **Monorepo Layout:**
   - `supabase/migrations/`: Database migrations.
   - `apps/web/` (`@pagepilot/web`): React 19 + TypeScript + Vite + Tailwind CSS v4 frontend.
-  - `apps/api` (`@pagepilot/api`): Express API on Vercel Node runtime with `/api/inngest` serve handler exposing all 3 durable functions.
-  - `packages/contracts/` (`@pagepilot/contracts`): Shared Zod schemas, domain types, database types, workspace types, event contracts, timezone helper, URL policy, error codes, audit diff contracts, alert contracts.
+  - `apps/api` (`@pagepilot/api`): Express API on Vercel Node runtime with `/api/inngest` serve handler and work items router (`/api/projects/:projectId/work-items`).
+  - `packages/contracts/` (`@pagepilot/contracts`): Shared Zod schemas, domain types, database types, workspace types, event contracts, timezone helper, URL policy, error codes, audit diff contracts, alert contracts, work item contracts.
   - `packages/audit-engine` (`@pagepilot/audit-engine`): SSRF safe fetch, extraction, checks, AI audit, scoring, regression diff engine.
-  - `packages/workflows` (`@pagepilot/workflows`): Inngest durable workflows (`execute-audit-workflow`, `weekly-audit-scheduler`, `deliver-alert-notification`), alert evaluation engine, email template builder, notification provider abstractions, client, event schemas, narrow persistence interface.
+  - `packages/workflows` (`@pagepilot/workflows`): Inngest durable workflows (`execute-audit-workflow`, `weekly-audit-scheduler`, `deliver-alert-notification`), alert evaluation engine, email template builder, notification provider abstractions.
 - **Dependency Flow:**
   - `apps/web` $\rightarrow$ `@pagepilot/contracts`
   - `apps/api` $\rightarrow$ `@pagepilot/contracts`, `@pagepilot/audit-engine`, `@pagepilot/workflows`
@@ -110,21 +102,23 @@ The PagePilot monorepo architecture, core landing-page audit MVP, multi-tenant p
 
 ## 4. Known Issues & Operational Notes
 
-- **Database & Inngest Runtime Environment:** The local Windows host environment lacks Docker daemon; local containerized Supabase CLI and Inngest background dev server cannot run background daemons locally. Supabase MCP inspection of the active Supabase account identified only external databases (`ChronoCode`, `CampuSync`), which were preserved untouched. Migration SQL correctness, RLS policies, Inngest event contracts, Inngest serve handler endpoint (`/api/inngest`), atomic concurrency claim, and multi-step workflow execution are verified via automated static schema test suite, unit/integration tests (`audit-workflow.test.ts`, `weekly-scheduler.test.ts`, `alert-delivery-workflow.test.ts`, `inngest-api.test.ts`, `workflow-store.test.ts`, `audit-diff.test.ts`, `alert-evaluation.test.ts`), and TypeScript typecheck. Full live Inngest execution, real transactional email delivery, and remote database RLS execution remain pending deployment to a dedicated staging environment.
+- **Database & Inngest Runtime Environment:** The local Windows host environment lacks Docker daemon; local containerized Supabase CLI and Inngest background dev server cannot run background daemons locally. Supabase MCP inspection of the active Supabase account identified only external databases (`ChronoCode`, `CampuSync`), which were preserved untouched. Migration SQL correctness, RLS policies, Inngest event contracts, Inngest serve handler endpoint (`/api/inngest`), atomic concurrency claim, and multi-step workflow execution are verified via automated static schema test suite, unit/integration tests (`work-items-api.test.ts`, `audit-workflow.test.ts`, `weekly-scheduler.test.ts`, `alert-delivery-workflow.test.ts`, `inngest-api.test.ts`, `workflow-store.test.ts`, `audit-diff.test.ts`, `alert-evaluation.test.ts`), and TypeScript typecheck. Full live Inngest execution, real transactional email delivery, and remote database RLS execution remain pending deployment to a dedicated staging environment.
 - **Free-Tier Gemini Daily Quotas:** Free-tier API keys have per-model request caps (20 requests/day/model on free tier). Automated test suites use mock adapters to protect quota. Live verification uses `pnpm run verify:gemini`.
 - **Model Support:** Adapter defaults to `gemini-3.6-flash` and supports `gemini-3.7-flash` via `GEMINI_MODEL` (with `thinkingLevel: "low"`).
-- **Test Worker Threading on Windows:** Vitest root config is set with `pool: "forks"` and 20s timeouts to ensure rock-solid test execution across all 51 test files on Windows.
+- **Test Worker Threading on Windows:** Vitest root config is configured with `pool: "forks"` and `fileParallelism: false` with 20s timeouts to ensure rock-solid, deterministic test execution across all 52 test files on Windows.
 
 ---
 
 ## 5. Exact Next Task
 
-- **Completed Milestones:**
+- **Completed Milestones & Tasks:**
   - Milestone 0 — Product Foundation & Monorepo Setup (Tasks 0.1, 0.2, 0.3, 0.4, 0.5) **COMPLETE & VERIFIED**
   - Milestone 1 — Core Audit MVP **COMPLETE & VERIFIED**
   - Milestone 2 — Accounts & Projects (Tasks 2.1–2.5) **COMPLETE & VERIFIED** (Runtime RLS Pending Staging)
-  - **Milestone 3 — Continuous Monitoring & Alerts (Tasks 3.1, 3.2, 3.3, 3.4, 3.5, & 3.6 COMPLETE & VERIFIED; Runtime RLS, Inngest Cloud, & Real Email Pending Staging)**
-- **Exact Next Task:** Milestone 4: Collaboration & Prioritization (Task 4.1: Finding Resolution Workflows & Multi-tenant Action State).
+  - Milestone 3 — Continuous Monitoring & Alerts (Tasks 3.1–3.6) **COMPLETE & VERIFIED** (Runtime RLS, Inngest Cloud, & Real Email Pending Staging)
+  - **Milestone 4 — Collaboration & Prioritization (Task 4.1 Collaboration & Prioritization Data Model + Secure API Foundation COMPLETE & VERIFIED; Runtime RLS Pending Staging)**
+- **Exact Next Task:** Milestone 4: Collaboration & Prioritization — Task 4.2: Work Items UI, Backlog Views, & Assignee Actions.
+
 
 
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   auditReportSchema,
   auditRunSchema,
+  createWorkItemSchema,
   findingEntitySchema,
   membershipSchema,
   monitoredPageSchema,
@@ -13,6 +14,10 @@ import {
   REPORT_SCHEMA_VERSION,
   roleSchema,
   scoreSnapshotSchema,
+  updateWorkItemSchema,
+  workItemActivitySchema,
+  workItemFiltersSchema,
+  workItemSchema,
 } from "../src/index.js";
 
 describe("Database Contracts & Schemas", () => {
@@ -325,4 +330,130 @@ describe("Database Contracts & Schemas", () => {
     };
     expect(recommendationEntitySchema.parse(validRecommendation)).toEqual(validRecommendation);
   });
+
+  it("validates workItemSchema and workItemActivitySchema", () => {
+    const validWorkItem = {
+      id: validUuid,
+      organizationId: validUuid,
+      projectId: validUuid,
+      monitoredPageId: validUuid,
+      auditRunId: validUuid,
+      auditReportId: validUuid,
+      sourceType: "finding",
+      findingId: validUuid,
+      recommendationId: null,
+      title: "Fix low contrast CTA",
+      description: "Button text is hard to read against background.",
+      category: "ctaEffectiveness",
+      severity: "high",
+      status: "in_progress",
+      assigneeId: validUuid,
+      notes: "Design team is reviewing updated palette.",
+      tags: ["cta", "high-priority"],
+      resolutionRationale: null,
+      resolvedAt: null,
+      resolvedByUserId: null,
+      createdByUserId: validUuid,
+      lastModifiedByUserId: validUuid,
+      createdAt: validTimestamp,
+      updatedAt: validTimestamp,
+    };
+    expect(workItemSchema.parse(validWorkItem)).toEqual(validWorkItem);
+
+    const validActivity = {
+      id: validUuid,
+      workItemId: validUuid,
+      organizationId: validUuid,
+      projectId: validUuid,
+      actorUserId: validUuid,
+      action: "status_changed",
+      fromStatus: "open",
+      toStatus: "in_progress",
+      details: { resolutionRationale: null },
+      createdAt: validTimestamp,
+    };
+    expect(workItemActivitySchema.parse(validActivity)).toEqual(validActivity);
+  });
+
+  it("validates createWorkItemSchema requirements and bounds", () => {
+    // Valid finding work item
+    const validFindingInput = {
+      sourceType: "finding",
+      findingId: validUuid,
+      title: "Custom Title",
+      status: "open",
+      tags: ["ux", "growth"],
+    };
+    expect(createWorkItemSchema.parse(validFindingInput)).toMatchObject(validFindingInput);
+
+    // Valid recommendation work item
+    const validRecInput = {
+      sourceType: "recommendation",
+      recommendationId: validUuid,
+    };
+    expect(createWorkItemSchema.parse(validRecInput)).toMatchObject(validRecInput);
+
+    // Finding requires findingId
+    expect(() => createWorkItemSchema.parse({ sourceType: "finding" })).toThrow(
+      "findingId is required",
+    );
+
+    // Recommendation requires recommendationId
+    expect(() => createWorkItemSchema.parse({ sourceType: "recommendation" })).toThrow(
+      "recommendationId is required",
+    );
+
+    // Notes bound (> 5000 chars rejected)
+    expect(() =>
+      createWorkItemSchema.parse({
+        sourceType: "finding",
+        findingId: validUuid,
+        notes: "x".repeat(5001),
+      }),
+    ).toThrow();
+
+    // Tags bound (> 20 tags rejected)
+    expect(() =>
+      createWorkItemSchema.parse({
+        sourceType: "finding",
+        findingId: validUuid,
+        tags: Array(21).fill("tag"),
+      }),
+    ).toThrow();
+  });
+
+  it("validates updateWorkItemSchema bounds and status values", () => {
+    const validUpdate = {
+      status: "resolved",
+      resolutionRationale: "Updated CTA colors deployed to production.",
+      notes: "Verified with design lead.",
+      tags: ["resolved", "v2"],
+    };
+    expect(updateWorkItemSchema.parse(validUpdate)).toEqual(validUpdate);
+
+    // Invalid status rejected
+    expect(() => updateWorkItemSchema.parse({ status: "archived" as any })).toThrow();
+
+    // Resolution rationale > 2000 chars rejected
+    expect(() =>
+      updateWorkItemSchema.parse({
+        resolutionRationale: "x".repeat(2001),
+      }),
+    ).toThrow();
+  });
+
+  it("validates workItemFiltersSchema", () => {
+    const filters = {
+      status: "open",
+      sourceType: "finding",
+      limit: "25",
+      offset: "10",
+    };
+    const parsed = workItemFiltersSchema.parse(filters);
+    expect(parsed.status).toBe("open");
+    expect(parsed.sourceType).toBe("finding");
+    expect(parsed.limit).toBe(25);
+    expect(parsed.offset).toBe(10);
+  });
 });
+

@@ -214,5 +214,51 @@ describe("Supabase Multi-Tenant SQL Migration Validation", () => {
     expect(alertsSql).toContain("alert_deliveries_update_policy");
     expect(alertsSql).toContain("alert_deliveries_delete_policy");
   });
+
+  it("defines work_items and work_item_activities tables with atomic RPCs, DB assignee validation, and RLS in migration", () => {
+    const workItemsMigrationPath = resolve(
+      process.cwd(),
+      "supabase/migrations/20260830120000_work_items_and_collaboration.sql",
+    );
+    const workItemsSql = readFileSync(workItemsMigrationPath, "utf-8");
+
+    expect(workItemsSql).toContain("CREATE TABLE IF NOT EXISTS public.work_items");
+    expect(workItemsSql).toContain("CREATE TABLE IF NOT EXISTS public.work_item_activities");
+
+    // Foreign keys & cascades
+    expect(workItemsSql).toMatch(/organization_id\s+UUID\s+NOT\s+NULL\s+REFERENCES\s+public\.organizations\(id\)\s+ON\s+DELETE\s+CASCADE/i);
+    expect(workItemsSql).toMatch(/project_id\s+UUID\s+NOT\s+NULL\s+REFERENCES\s+public\.projects\(id\)\s+ON\s+DELETE\s+CASCADE/i);
+    expect(workItemsSql).toMatch(/monitored_page_id\s+UUID\s+NOT\s+NULL\s+REFERENCES\s+public\.monitored_pages\(id\)\s+ON\s+DELETE\s+CASCADE/i);
+
+    // Uniqueness & source check
+    expect(workItemsSql).toContain("uq_work_items_page_finding");
+    expect(workItemsSql).toContain("uq_work_items_page_recommendation");
+    expect(workItemsSql).toContain("chk_work_items_source");
+
+    // Database-level assignee validation trigger
+    expect(workItemsSql).toContain("check_work_item_assignee_org");
+    expect(workItemsSql).toContain("trg_check_work_item_assignee");
+    expect(workItemsSql).toContain("Assignee must be a member of the organization.");
+
+    // RLS enabled and forced
+    expect(workItemsSql).toContain("ALTER TABLE public.work_items ENABLE ROW LEVEL SECURITY;");
+    expect(workItemsSql).toContain("ALTER TABLE public.work_items FORCE ROW LEVEL SECURITY;");
+    expect(workItemsSql).toContain("ALTER TABLE public.work_item_activities ENABLE ROW LEVEL SECURITY;");
+    expect(workItemsSql).toContain("ALTER TABLE public.work_item_activities FORCE ROW LEVEL SECURITY;");
+
+    // RLS policies
+    expect(workItemsSql).toContain("work_items_select_policy");
+    expect(workItemsSql).toContain("work_items_insert_policy");
+    expect(workItemsSql).toContain("work_items_update_policy");
+    expect(workItemsSql).toContain("work_items_delete_policy");
+    expect(workItemsSql).toContain("work_item_activities_select_policy");
+    expect(workItemsSql).toContain("work_item_activities_insert_policy");
+    expect(workItemsSql).toContain("work_item_activities_delete_policy");
+
+    // Atomic RPC functions
+    expect(workItemsSql).toContain("FUNCTION public.create_work_item_atomic");
+    expect(workItemsSql).toContain("FUNCTION public.update_work_item_atomic");
+  });
 });
+
 
