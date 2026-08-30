@@ -445,3 +445,43 @@ To allow workspace members to share specific historical audit reports with exter
   - When an expired or revoked link is loaded, displays a clean, non-intrusive unavailable screen.
 - **Runtime RLS Status**:
   - Full schema, RLS policies, and RPC definitions are committed in migration `20260830130000_report_share_links.sql` and verified via contracts and unit/integration test suites. Actual live runtime Supabase RLS verification remains marked `PENDING STAGING` until a dedicated PagePilot Supabase staging instance is provisioned.
+
+## D57 — Project Prioritization Views, Historical Report Comparison, Deterministic Ranking, and Automatic Baseline Selection (Milestone 4 — Task 4.4)
+
+To turn audit findings and monitoring streams into an actionable, explainable prioritization engine and give teams continuous visibility into UX regressions and improvements over time:
+- **Pure Deterministic Historical Report Comparison**:
+  - Registered `GET /api/projects/:projectId/pages/:pageId/audits/:auditRunId/diff` in `apps/api/src/audits/routes.ts`.
+  - Computes pure deterministic diffs using `computeAuditDiff` from `@pagepilot/audit-engine` and returns `{ diff, currentReport, previousReport }` conforming to `auditDiffResponseSchema`.
+  - Zero mutations to historical reports, findings, recommendations, score snapshots, or audit runs: historical reports remain immutable evidence.
+- **Automatic Comparison Baseline vs. Explicit Comparison**:
+  - When `compareRunId` is not supplied in query parameters, the server queries `getPreviousSuccessfulAudit(orgId, projectId, pageId, beforeTimestamp)`, strictly selecting the most recent audit with `status = 'completed'` created prior to the current run's timestamp (`created_at < beforeTimestamp`).
+  - Failed, queued, or running audits are never used as comparison baselines.
+  - When a page has only one completed audit, the server returns `isBaseline: true` with `previousReport: null`, and the UI renders a dedicated "Baseline Audit Established" notice.
+  - Supports explicit `compareRunId` parameter allowing teams to compare any arbitrary pair of completed audits on that landing page.
+- **Deterministic Project Prioritization Ranking**:
+  - Highest-Impact Open Work in `<ProjectDetail />` ranks open and in-progress work items deterministically:
+    1. Severity rank: `high` (3) > `medium` (2) > `low` (1)
+    2. Recency: `updatedAt` descending
+  - Explicitly rejects composite/opaque "business-impact scores" in favor of transparent, explainable ranking using verified severity, status, and recency attributes.
+- **Project Prioritization Sections & Navigation**:
+  - **Overview & Priorities Tab**:
+    1. Summary KPI cards: Monitored Pages (active tally), Open Work Items (high-severity tally), Audited Pages count, Resolved Improvements count.
+    2. **Highest-Impact Open Work**: Ranked list of open/in-progress work items with deep-link modal inspection (`<WorkItemDetailModal />`), assignee chips, and empty states.
+    3. **Landing Page UX Trajectories**: Monitored pages with direct "Compare Changes" actions and management controls.
+    4. **Resolved Improvements**: Verified improvements with resolution rationale, resolver info, and resolution date.
+  - **Monitored Pages Tab**: Complete landing page directory with status toggles, cadence, tags, edit, and deletion modals.
+- **Comprehensive Comparison Viewer (`<ReportComparisonView />`)**:
+  - Score Delta Hero: Previous Score $\to$ Current Score with delta badge and meaningful regression alerts (highlighted when $\Delta \le -10$ or new high-severity findings appear).
+  - 7 Category Score Changes Grid: Before $\to$ After score transitions and severity shifts for all 7 UX dimensions.
+  - Filterable Tabbed Diff Views:
+    - **Regressions & Issues**: Score drops, new high-severity issues, severity escalations.
+    - **New Findings**: Newly detected problems with `+ Track Work Item` action for non-viewers.
+    - **Resolved Findings**: Fixed problems highlighted with line-through styling and previous evidence.
+    - **Changed Findings**: Material before/after changes in severity and recommendations.
+    - **Deterministic Signals**: Status transitions (`pass -> warn`, `warn -> pass`, `became_measured`, `became_unknown`).
+    - **Improvements**: Positive score deltas and resolved issues.
+  - Compare Target Dropdown: Allows switching the comparison baseline to any historical run directly in the UI.
+- **Strict Role Gating & Tenant Isolation**:
+  - Viewer role has read-only access to diffs and comparison views; `+ Track Work Item` buttons and page mutation controls are hidden.
+  - Cross-tenant requests return safe `404 NOT_FOUND`.
+

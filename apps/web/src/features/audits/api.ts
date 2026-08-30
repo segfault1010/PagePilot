@@ -1,10 +1,12 @@
 import type {
+  AuditDiffResponse,
   AuditHistoryListResponse,
   AuditRunResponse,
   PersistedAuditReportResponse,
   TriggerAuditRequest,
 } from "@pagepilot/contracts";
 import {
+  auditDiffResponseSchema,
   auditHistoryListResponseSchema,
   auditRunResponseSchema,
   persistedAuditReportResponseSchema,
@@ -157,3 +159,29 @@ export async function getAuditReportByRunId(
   );
   return persistedAuditReportResponseSchema.parse(json);
 }
+
+/**
+ * Retrieves a deterministic audit comparison diff for a given run vs. its previous run (or an explicitly specified comparison run).
+ */
+export async function getAuditDiff(
+  projectId: string,
+  pageId: string,
+  runId: string,
+  params: { compareRunId?: string; previousRunId?: string } = {},
+  options: AuditRequestOptions = {},
+): Promise<AuditDiffResponse> {
+  const query = new URLSearchParams();
+  if (params.compareRunId) query.set("compareRunId", params.compareRunId);
+  else if (params.previousRunId) query.set("compareRunId", params.previousRunId);
+  const queryString = query.toString() ? `?${query.toString()}` : "";
+
+  const json = await authenticatedFetch<unknown>(
+    `/api/projects/${projectId}/pages/${pageId}/audits/${runId}/diff${queryString}`,
+    {
+      method: "GET",
+    },
+    options,
+  );
+  return auditDiffResponseSchema.parse(json);
+}
+

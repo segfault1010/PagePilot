@@ -588,6 +588,27 @@ class InMemoryDatabase implements ProjectsStore, AuditPersistenceStore {
       page.latestSuccessfulAuditRunId,
     );
   }
+
+  async getPreviousSuccessfulAudit(
+    orgId: string,
+    projectId: string,
+    pageId: string,
+    beforeTimestamp: string,
+  ): Promise<PersistedAuditReport | null> {
+    const matchingRuns = Array.from(this.runs.values())
+      .filter(
+        (r) =>
+          r.organizationId === orgId &&
+          r.projectId === projectId &&
+          r.monitoredPageId === pageId &&
+          r.status === "completed" &&
+          r.createdAt < beforeTimestamp,
+      )
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+    if (matchingRuns.length === 0) return null;
+    return this.getAuditReportByRunId(orgId, projectId, pageId, matchingRuns[0].id);
+  }
 }
 
 // Mock sample report fixture

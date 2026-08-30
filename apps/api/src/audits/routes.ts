@@ -4,6 +4,7 @@ import {
   API_ERROR_CODES,
   triggerAuditRequestSchema,
 } from "@pagepilot/contracts";
+import { computeAuditDiff } from "@pagepilot/audit-engine";
 import type { AnalysisOutcome } from "@pagepilot/audit-engine";
 import { requireOrgRole } from "../auth/middleware.js";
 import { SupabaseProjectsStore } from "../projects/projects-store.js";
@@ -258,7 +259,138 @@ export function createAuditsRouter(options: AuditRoutesOptions = {}): Router {
     },
   );
 
-  // 4. GET /api/projects/:projectId/pages/:pageId/audits/:auditRunId (owner, admin, member, viewer)
+  // 4. GET /api/projects/:projectId/pages/:pageId/audits/:auditRunId/diff (owner, admin, member, viewer)
+  router.get(
+    "/:auditRunId/diff",
+    requireOrgRole(["owner", "admin", "member", "viewer"]),
+    async (req: Request, res: Response): Promise<void> => {
+      const projectId = getParam(req, "projectId");
+      const pageId = getParam(req, "pageId");
+      const auditRunId = getParam(req, "auditRunId");
+      const compareRunId =
+        (typeof req.query.compareRunId === "string"
+          ? req.query.compareRunId
+          : typeof req.query.previousRunId === "string"
+          ? req.query.previousRunId
+          : "") || "";
+
+      if (
+        !projectId ||
+        !isValidUuid(projectId) ||
+        !pageId ||
+        !isValidUuid(pageId) ||
+        !auditRunId ||
+        !isValidUuid(auditRunId) ||
+        (compareRunId && !isValidUuid(compareRunId))
+      ) {
+        sendError(res, 404, API_ERROR_CODES.notFound, "Audit report not found.");
+        return;
+      }
+
+      const orgId = req.workspace!.organization.id;
+      const projectsStore = getProjectsStore(req);
+      const auditStore = getAuditStore(req);
+
+      // Verify page belongs to project/org
+      const page = await projectsStore.getMonitoredPageById(
+        orgId,
+        projectId,
+        pageId,
+      );
+      if (!page) {
+        sendError(res, 404, API_ERROR_CODES.notFound, "Monitored page not found.");
+        return;
+      }
+
+      try {
+        const currentPersisted = await auditStore.getAuditReportByRunId(
+          orgId,
+          projectId,
+          pageId,
+          auditRunId,
+        );
+
+        if (!currentPersisted || currentPersisted.auditRun.status !== "completed") {
+          sendError(
+            res,
+            404,
+            API_ERROR_CODES.notFound,
+            "Current audit report not found or is not completed.",
+          );
+          return;
+        }
+
+        let previousPersisted = null;
+        if (compareRunId) {
+          previousPersisted = await auditStore.getAuditReportByRunId(
+            orgId,
+            projectId,
+            pageId,
+            compareRunId,
+          );
+          if (
+            !previousPersisted ||
+            previousPersisted.auditRun.status !== "completed"
+          ) {
+            sendError(
+              res,
+              404,
+              API_ERROR_CODES.notFound,
+              "Comparison audit report not found or is not completed.",
+            );
+            return;
+          }
+        } else {
+          // Automatic baseline comparison: strictly most recent completed audit prior to current run
+          previousPersisted = await auditStore.getPreviousSuccessfulAudit(
+            orgId,
+            projectId,
+            pageId,
+            currentPersisted.auditRun.createdAt,
+          );
+        }
+
+        const diff = computeAuditDiff({
+          currentReport: currentPersisted.report.reportPayload,
+          previousReport: previousPersisted?.report?.reportPayload ?? null,
+          currentRunMeta: {
+            auditRunId: currentPersisted.auditRun.id,
+            analyzedAt:
+              currentPersisted.auditRun.completedAt ??
+              currentPersisted.auditRun.createdAt,
+            modelVersion: currentPersisted.auditRun.modelVersion,
+            scoringVersion: currentPersisted.report.scoringVersion,
+          },
+          previousRunMeta: previousPersisted
+            ? {
+                auditRunId: previousPersisted.auditRun.id,
+                analyzedAt:
+                  previousPersisted.auditRun.completedAt ??
+                  previousPersisted.auditRun.createdAt,
+                modelVersion: previousPersisted.auditRun.modelVersion,
+                scoringVersion: previousPersisted.report.scoringVersion,
+              }
+            : null,
+        });
+
+        res.status(200).json({
+          diff,
+          currentReport: currentPersisted,
+          previousReport: previousPersisted ?? null,
+        });
+      } catch (err: any) {
+        console.error("[audits] get audit diff error:", err);
+        sendError(
+          res,
+          500,
+          API_ERROR_CODES.internalError,
+          "Failed to compute audit diff.",
+        );
+      }
+    },
+  );
+
+  // 5. GET /api/projects/:projectId/pages/:pageId/audits/:auditRunId (owner, admin, member, viewer)
   router.get(
     "/:auditRunId",
     requireOrgRole(["owner", "admin", "member", "viewer"]),

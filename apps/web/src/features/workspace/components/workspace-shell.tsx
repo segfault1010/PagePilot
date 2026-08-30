@@ -36,6 +36,7 @@ import { ProjectList } from "./project-list";
 import { ProjectDetail } from "./project-detail";
 import { PageDetail } from "./page-detail";
 import { HistoricalReportView } from "./historical-report-view";
+import { ReportComparisonView } from "./report-comparison-view";
 import { WorkItemsBacklog } from "../../work-items/components/work-items-backlog";
 
 const PAGE_SIZE = 10;
@@ -77,6 +78,12 @@ export function WorkspaceShell({ onSwitchToOneOffAudit }: WorkspaceShellProps) {
   // Active Report View State
   const [activeReport, setActiveReport] = useState<PersistedAuditReportResponse | null>(null);
   const [isLatestReportView, setIsLatestReportView] = useState(false);
+
+  // Active Comparison State
+  const [activeComparison, setActiveComparison] = useState<{
+    currentRunId: string;
+    compareRunId?: string | null;
+  } | null>(null);
 
   // Loading States
   const [isLoadingProjects, setIsLoadingProjects] = useState(true);
@@ -356,6 +363,15 @@ export function WorkspaceShell({ onSwitchToOneOffAudit }: WorkspaceShellProps) {
     setActiveReport(null);
   };
 
+  const handleCompare = (runId: string, compareRunId?: string) => {
+    setActiveReport(null);
+    setActiveComparison({ currentRunId: runId, compareRunId: compareRunId ?? null });
+  };
+
+  const handleBackFromComparison = () => {
+    setActiveComparison(null);
+  };
+
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100">
       {/* Workspace Header */}
@@ -376,6 +392,7 @@ export function WorkspaceShell({ onSwitchToOneOffAudit }: WorkspaceShellProps) {
                 onClick={() => {
                   setNavSection("projects");
                   setActiveReport(null);
+                  setActiveComparison(null);
                 }}
                 className={`rounded-md px-3 py-1.5 font-medium transition ${
                   navSection === "projects"
@@ -390,6 +407,7 @@ export function WorkspaceShell({ onSwitchToOneOffAudit }: WorkspaceShellProps) {
                 onClick={() => {
                   setNavSection("work");
                   setActiveReport(null);
+                  setActiveComparison(null);
                 }}
                 className={`rounded-md px-3 py-1.5 font-medium transition ${
                   navSection === "work"
@@ -469,6 +487,7 @@ export function WorkspaceShell({ onSwitchToOneOffAudit }: WorkspaceShellProps) {
               if (foundPg) setSelectedPage(foundPg);
               setNavSection("projects");
               setActiveReport(null);
+              setActiveComparison(null);
             }}
             onNavigateToReport={(projId, pageId, runId) => {
               setSelectedProjectId(projId);
@@ -478,8 +497,21 @@ export function WorkspaceShell({ onSwitchToOneOffAudit }: WorkspaceShellProps) {
               const foundPg = pages.find((p) => p.id === pageId);
               if (foundPg) setSelectedPage(foundPg);
               setNavSection("projects");
+              setActiveComparison(null);
               handleViewHistoricalReport(runId);
             }}
+          />
+        ) : activeComparison && selectedProject && selectedPage ? (
+          <ReportComparisonView
+            projectId={selectedProject.id}
+            page={selectedPage}
+            currentRunId={activeComparison.currentRunId}
+            initialCompareRunId={activeComparison.compareRunId}
+            history={history}
+            role={role}
+            members={members}
+            pages={pages}
+            onBack={handleBackFromComparison}
           />
         ) : activeReport ? (
           <HistoricalReportView
@@ -489,6 +521,7 @@ export function WorkspaceShell({ onSwitchToOneOffAudit }: WorkspaceShellProps) {
             members={members}
             pages={pages}
             onBack={handleBackToPageDetail}
+            onCompare={(runId) => handleCompare(runId)}
           />
         ) : selectedProject && selectedPage ? (
           <PageDetail
@@ -505,6 +538,7 @@ export function WorkspaceShell({ onSwitchToOneOffAudit }: WorkspaceShellProps) {
             onRunAudit={handleRunAudit}
             onViewLatestReport={handleViewLatestReport}
             onViewHistoricalReport={handleViewHistoricalReport}
+            onCompareReport={(runId, compareRunId) => handleCompare(runId, compareRunId)}
           />
         ) : selectedProject ? (
           <ProjectDetail
@@ -512,8 +546,13 @@ export function WorkspaceShell({ onSwitchToOneOffAudit }: WorkspaceShellProps) {
             pages={pages}
             role={role}
             isLoading={isLoadingPages}
+            members={members}
             onBackToProjects={handleBackToProjects}
             onSelectPage={handleSelectPage}
+            onComparePage={(page, runId, compareRunId) => {
+              handleSelectPage(page);
+              handleCompare(runId, compareRunId);
+            }}
             onCreatePage={handleCreatePage}
             onUpdatePage={handleUpdatePage}
             onDeletePage={handleDeletePage}

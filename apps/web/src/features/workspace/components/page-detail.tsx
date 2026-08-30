@@ -21,6 +21,7 @@ export interface PageDetailProps {
   onRunAudit: (idempotencyKey: string) => Promise<void>;
   onViewLatestReport: () => void;
   onViewHistoricalReport: (runId: string) => void;
+  onCompareReport?: (runId: string, compareRunId?: string) => void;
 }
 
 export function PageDetail({
@@ -37,6 +38,7 @@ export function PageDetail({
   onRunAudit,
   onViewLatestReport,
   onViewHistoricalReport,
+  onCompareReport,
 }: PageDetailProps) {
   const [isAuditing, setIsAuditing] = useState(false);
   const [auditStep, setAuditStep] = useState<"starting" | "analyzing" | null>(null);
@@ -107,6 +109,17 @@ export function PageDetail({
         </div>
 
         <div className="flex items-center gap-3">
+          {hasSuccessfulReport && onCompareReport && page.latestSuccessfulAuditRunId && (
+            <button
+              type="button"
+              disabled={isAuditing}
+              onClick={() => onCompareReport(page.latestSuccessfulAuditRunId!)}
+              className="inline-flex items-center justify-center rounded-lg border border-neutral-700 bg-neutral-900 px-3.5 py-2 text-xs font-semibold text-neutral-200 transition hover:bg-neutral-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 disabled:opacity-50"
+            >
+              Compare Audits
+            </button>
+          )}
+
           {hasSuccessfulReport && (
             <button
               type="button"
@@ -335,13 +348,24 @@ export function PageDetail({
                       </td>
                       <td className="px-4 py-3 text-right">
                         {run.status === "completed" && (
-                          <button
-                            type="button"
-                            onClick={() => onViewHistoricalReport(run.id)}
-                            className="rounded border border-neutral-800 bg-neutral-900 px-2.5 py-1 text-[11px] font-medium text-neutral-300 transition hover:bg-neutral-800 hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/80"
-                          >
-                            View Report
-                          </button>
+                          <div className="flex items-center justify-end gap-1.5">
+                            {onCompareReport && (
+                              <button
+                                type="button"
+                                onClick={() => onCompareReport(run.id)}
+                                className="rounded border border-neutral-800 bg-neutral-900 px-2 py-1 text-[11px] font-medium text-neutral-300 transition hover:bg-neutral-800 hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/80"
+                              >
+                                Compare
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => onViewHistoricalReport(run.id)}
+                              className="rounded border border-neutral-800 bg-neutral-900 px-2.5 py-1 text-[11px] font-medium text-neutral-300 transition hover:bg-neutral-800 hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/80"
+                            >
+                              View Report
+                            </button>
+                          </div>
                         )}
                       </td>
                     </tr>

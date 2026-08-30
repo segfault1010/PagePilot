@@ -9,6 +9,7 @@ import {
 import {
   AUDIT_ENGINE_SCORING_VERSION,
   findingTypeSchema,
+  persistedAuditReportResponseSchema,
 } from "./database-types.js";
 
 /**
@@ -246,3 +247,11 @@ export const auditDiffSchema = z.object({
   improvements: z.array(improvementItemSchema),
 });
 export type AuditDiff = z.infer<typeof auditDiffSchema>;
+
+export const auditDiffResponseSchema = z.object({
+  diff: auditDiffSchema,
+  currentReport: persistedAuditReportResponseSchema.optional(),
+  previousReport: persistedAuditReportResponseSchema.nullable().optional(),
+});
+export type AuditDiffResponse = z.infer<typeof auditDiffResponseSchema>;
+

@@ -194,8 +194,8 @@ This roadmap defines the evolution of PagePilot from a single-project MVP into a
 ---
 
 ### Milestone 4: Collaboration & Prioritization
-- **Status:** `Complete & Verified` (Task 4.1 Data Model & Secure API, Task 4.2 Collaboration Backlog UI, & Task 4.3 Read-Only Shared Links Complete & Verified; runtime RLS pending staging)
-- **Product Outcome:** Audit findings become a prioritized work queue that teams can assign, discuss, and track to resolution, with secure external sharing for immutable audit evidence.
+- **Status:** `Complete & Verified` (Tasks 4.1, 4.2, 4.3, & 4.4 Complete & Verified; runtime RLS pending staging)
+- **Product Outcome:** Audit findings become a prioritized work queue that teams can assign, discuss, and track to resolution, with deterministic project prioritization, rich historical report comparison, and secure external sharing.
 - **Dependencies:** Milestone 2, Milestone 3.
 - **Tasks:**
   - **Task 4.1 — Collaboration & Prioritization Data Model + Secure API Foundation (`Complete & Verified`)**:
@@ -225,6 +225,13 @@ This roadmap defines the evolution of PagePilot from a single-project MVP into a
     - Standalone `<SharedReportPage />` at `/shared/reports/:token` rendering read-only immutable report evidence without workspace navigation sidebars, edit controls, or tracking buttons.
     - Contracts (`reportShareLinkSchema`, `createShareLinkRequestSchema`, `createShareLinkResponseSchema`, `shareLinkMetadataSchema`, `sharedAuditReportResponseSchema`), API endpoints, and Web client tested.
     - Runtime RLS status: Database migration, schema, policies, and RPC tested in automated contract and unit/integration test suites; runtime live Supabase RLS verification marked `PENDING STAGING`.
+  - **Task 4.4 — Project Prioritization Views & Historical Report Comparison (`Complete & Verified`)**:
+    - Added deterministic historical report comparison API endpoint `GET /api/projects/:projectId/pages/:pageId/audits/:auditRunId/diff` computing pure diffs using `@pagepilot/audit-engine`'s `computeAuditDiff`.
+    - Implemented automatic comparison baseline selection against the most recent completed audit prior to the current run (`created_at < beforeTimestamp AND status = 'completed' ORDER BY created_at DESC LIMIT 1`), with explicit `compareRunId` override support. Failed, queued, or running audits are never used as comparison baselines.
+    - Implemented `<ReportComparisonView />` in `apps/web/` featuring overall score trajectory hero, meaningful regression alerts ($\Delta \le -10$ or new high-severity findings), 7-category score changes grid, and filterable tabbed diff views (Regressions, New Findings with `+ Track Work Item`, Resolved Findings, Changed Findings, Deterministic Signals, and Improvements).
+    - Upgraded `<ProjectDetail />` with segmented views (Overview & Priorities vs Monitored Pages) and deterministic ranking for Highest-Impact Open Work (sorted strictly by severity `high` > `medium` > `low` then `updatedAt` descending), Landing Page UX Trajectories with direct "Compare Changes" actions, and Resolved Improvements.
+    - Connected comparison navigation across `WorkspaceShell`, `PageDetail`, `HistoricalReportView`, and `ProjectDetail`.
+    - Full quality gates verified: 542 tests passing across 60 test files, 0 typecheck errors, production build verified, live Gemini verified.
 - **Must Include:**
   - Finding work item statuses: `open`, `in_progress`, `resolved`, `dismissed`.
   - Work item metadata: assignee, note, tag, resolution rationale, actor audit logs.

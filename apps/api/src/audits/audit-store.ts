@@ -80,6 +80,13 @@ export interface AuditPersistenceStore {
     projectId: string,
     pageId: string,
   ): Promise<PersistedAuditReport | null>;
+
+  getPreviousSuccessfulAudit(
+    orgId: string,
+    projectId: string,
+    pageId: string,
+    beforeTimestamp: string,
+  ): Promise<PersistedAuditReport | null>;
 }
 
 function mapAuditRunRow(row: any): AuditRun {
@@ -593,4 +600,30 @@ export class SupabaseAuditPersistenceStore implements AuditPersistenceStore {
       pageData.latest_successful_audit_run_id,
     );
   }
+
+  async getPreviousSuccessfulAudit(
+    orgId: string,
+    projectId: string,
+    pageId: string,
+    beforeTimestamp: string,
+  ): Promise<PersistedAuditReport | null> {
+    const { data: runData, error: runError } = await this.client
+      .from("audit_runs")
+      .select("id")
+      .eq("organization_id", orgId)
+      .eq("project_id", projectId)
+      .eq("monitored_page_id", pageId)
+      .eq("status", "completed")
+      .lt("created_at", beforeTimestamp)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (runError || !runData) {
+      return null;
+    }
+
+    return this.getAuditReportByRunId(orgId, projectId, pageId, runData.id);
+  }
 }
+
