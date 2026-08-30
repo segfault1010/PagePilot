@@ -684,4 +684,74 @@ export const workItemFiltersSchema = z.object({
 });
 export type WorkItemFilters = z.infer<typeof workItemFiltersSchema>;
 
+// ---------------------------------------------------------------------------
+// Report Share Links Schemas (Task 4.3)
+// ---------------------------------------------------------------------------
+
+export const reportShareLinkSchema = z.object({
+  id: z.string().uuid(),
+  organizationId: z.string().uuid(),
+  projectId: z.string().uuid(),
+  monitoredPageId: z.string().uuid(),
+  auditRunId: z.string().uuid(),
+  auditReportId: z.string().uuid(),
+  tokenHash: z.string().min(1),
+  createdByUserId: z.string().uuid().nullable().optional(),
+  expiresAt: z.string().datetime().nullable().optional(),
+  revokedAt: z.string().datetime().nullable().optional(),
+  createdAt: z.string().datetime(),
+  lastAccessedAt: z.string().datetime().nullable().optional(),
+});
+export type ReportShareLink = z.infer<typeof reportShareLinkSchema>;
+
+export const createShareLinkRequestSchema = z.object({
+  expiresInDays: z
+    .number()
+    .int("Expiration must be an integer number of days.")
+    .min(1, "Expiration must be at least 1 day.")
+    .max(365, "Expiration cannot exceed 365 days.")
+    .default(30)
+    .optional(),
+});
+export type CreateShareLinkInput = z.infer<typeof createShareLinkRequestSchema>;
+
+export const shareLinkMetadataSchema = z.object({
+  id: z.string().uuid(),
+  auditRunId: z.string().uuid(),
+  auditReportId: z.string().uuid(),
+  expiresAt: z.string().datetime().nullable().optional(),
+  revokedAt: z.string().datetime().nullable().optional(),
+  isRevoked: z.boolean().default(false),
+  isExpired: z.boolean().default(false),
+  createdAt: z.string().datetime(),
+  lastAccessedAt: z.string().datetime().nullable().optional(),
+});
+export type ShareLinkMetadata = z.infer<typeof shareLinkMetadataSchema>;
+
+export const createShareLinkResponseSchema = z.object({
+  shareLink: z.object({
+    id: z.string().uuid(),
+    shareUrl: z.string(),
+    token: z.string().min(1),
+    expiresAt: z.string().datetime().nullable().optional(),
+    createdAt: z.string().datetime(),
+  }),
+});
+export type CreateShareLinkResponse = z.infer<typeof createShareLinkResponseSchema>;
+
+export const sharedAuditReportResponseSchema = z.object({
+  report: auditReportSchema,
+  auditRun: auditRunSchema,
+  scoreSnapshots: z.array(scoreSnapshotSchema),
+  findings: z.array(findingEntitySchema),
+  recommendations: z.array(recommendationEntitySchema),
+  shareMetadata: z.object({
+    id: z.string().uuid(),
+    createdAt: z.string().datetime(),
+    expiresAt: z.string().datetime().nullable().optional(),
+  }),
+});
+export type SharedAuditReportResponse = z.infer<typeof sharedAuditReportResponseSchema>;
+
+
 

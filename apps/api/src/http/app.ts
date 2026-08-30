@@ -76,6 +76,8 @@ import type { WorkflowPersistenceStore } from "@pagepilot/workflows";
 import { SupabaseWorkflowPersistenceStore } from "../audits/supabase-workflow-store.js";
 import type { WorkItemsStore } from "../work-items/work-items-store.js";
 import { SupabaseWorkItemsStore } from "../work-items/work-items-store.js";
+import type { SharePersistenceStore } from "../share/share-store.js";
+import { createPublicSharedReportHandler } from "../share/routes.js";
 
 export interface AppOptions extends AuthMiddlewareOptions {
   /** Injectable for tests; production uses the real safe-fetch pipeline. */
@@ -86,6 +88,10 @@ export interface AppOptions extends AuthMiddlewareOptions {
   getAuditStore?: (req: Request) => AuditPersistenceStore;
   /** Injectable for tests; production instantiates SupabaseWorkItemsStore with user authToken. */
   getWorkItemsStore?: (req: Request) => WorkItemsStore;
+  /** Injectable for tests; production instantiates SupabaseSharePersistenceStore with user authToken. */
+  getShareStore?: (req: Request) => SharePersistenceStore;
+  /** Injectable for tests; public share rate limiter */
+  publicShareRateLimiter?: (ip: string) => boolean;
   /** Injectable for tests; Inngest client */
   inngestClient?: Inngest;
   /** Injectable for tests; Inngest workflow functions */
@@ -357,6 +363,17 @@ export function createApp(options: AppOptions = {}): Express {
   });
 
   // -------------------------------------------------------------------------
+  // Public Unauthenticated Shared Report Route (Read-Only)
+  // -------------------------------------------------------------------------
+  app.get(
+    "/api/shared/reports/:token",
+    createPublicSharedReportHandler({
+      getShareStore: options.getShareStore,
+      rateLimiter: options.publicShareRateLimiter,
+    }),
+  );
+
+  // -------------------------------------------------------------------------
   // Authenticated Projects & Monitored Pages Routes (Protected)
   // -------------------------------------------------------------------------
   app.use(
@@ -367,6 +384,7 @@ export function createApp(options: AppOptions = {}): Express {
       getStore: options.getProjectsStore,
       getAuditStore: options.getAuditStore,
       getWorkItemsStore: options.getWorkItemsStore,
+      getShareStore: options.getShareStore,
       analyzeUrl: options.analyzeUrl,
     }),
   );

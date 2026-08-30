@@ -417,5 +417,31 @@ To provide an authenticated collaboration experience for growth teams prioritizi
 - **Role-Based Permissions & Immutability**:
   - Viewer role: read-only access with interactive controls disabled (`disabled={isViewer}`) and clear helper text explaining read-only permissions.
   - Historical audit reports and database finding/recommendation rows remain 100% immutable. Tracked work items exist exclusively in `public.work_items` with separate lifecycles.
+## D56 — Read-Only Shared Report Links, High-Entropy Bearer Tokens, SHA-256 Hash Persistence, Revocation, and Public Boundary (Milestone 4 — Task 4.3)
 
-
+To allow workspace members to share specific historical audit reports with external stakeholders, clients, or leadership without granting workspace access or violating tenant isolation:
+- **Share Model Tied Exclusively to One Immutable Historical Report**:
+  - `public.report_share_links` links directly to a specific `audit_run_id` and `audit_report_id` within a verified `organization_id` and `monitored_page_id`.
+  - A share token grants access to *only* that single audit report. It cannot be used to inspect monitored pages, organization projects, work items, alerts, or audit run history.
+- **Cryptographic Token Architecture & Hash-Only Persistence**:
+  - Unforgeable tokens are generated server-side using 256-bit cryptographically secure pseudorandom entropy (`crypto.randomBytes(32).toString("base64url")`).
+  - The plaintext bearer token is returned to the creator *exactly once* upon creation and is never persisted in plaintext.
+  - The database persists only the deterministic SHA-256 hash (`token_hash = sha256(token)`) backed by a unique index (`idx_report_share_links_token_hash`).
+- **Strict Public Resolver Isolation & Sanitized Projection**:
+  - Public token resolution is executed via a dedicated `SECURITY DEFINER` PostgreSQL RPC `public.get_shared_audit_report(p_token_hash text)` running with `SET search_path = public, pg_temp;`.
+  - The function verifies token validity, expiration (`expires_at > now()`), and revocation (`revoked_at IS NULL`), and projects *only* the sanitized report payload, audit run timestamps/model metadata, score snapshots, findings, and recommendations.
+  - Internal tenant identifiers (`organization_id`, member user IDs, emails, work items, alert rules) are strictly excluded from the public projection.
+  - Updates `last_accessed_at` timestamp upon each successful lookup.
+- **Uniform 404 Error Obfuscation & Public Rate Limiting**:
+  - To prevent token enumeration, timing attacks, or state probing, all failure cases (invalid token, expired link, revoked link, non-existent share) return an identical `404 NOT_FOUND` with message `"This report link is no longer available."`.
+  - Public endpoint `/api/shared/reports/:token` is safeguarded with an IP-based rate limiter (60 requests / 10 minutes per IP) returning `429 RATE_LIMITED`.
+  - HTTP responses enforce strict anti-indexing and security headers: `Cache-Control: no-store, no-cache, must-revalidate`, `X-Robots-Tag: noindex, nofollow`, and `X-Content-Type-Options: nosniff`.
+- **Expiration, Revocation, and Workspace Lifecycle Controls**:
+  - Configurable expiration periods: 7 days, 30 days (default), 90 days, or 365 days.
+  - Explicit revocation mechanism: Authenticated workspace members (owner, admin, member) can immediately revoke active share links. Revocation takes effect instantly across all sessions.
+  - Viewer role: read-only access to view share status; cannot generate or revoke share links.
+- **Isolated Public Report View**:
+  - Standalone `<SharedReportPage />` in `apps/web/src/features/share/components/shared-report-page.tsx` renders the full rich report without workspace navigation sidebars, edit controls, or "+ Track Work Item" mutation triggers.
+  - When an expired or revoked link is loaded, displays a clean, non-intrusive unavailable screen.
+- **Runtime RLS Status**:
+  - Full schema, RLS policies, and RPC definitions are committed in migration `20260830130000_report_share_links.sql` and verified via contracts and unit/integration test suites. Actual live runtime Supabase RLS verification remains marked `PENDING STAGING` until a dedicated PagePilot Supabase staging instance is provisioned.

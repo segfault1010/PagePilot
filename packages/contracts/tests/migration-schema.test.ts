@@ -1,13 +1,17 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
+function getMigrationSql(fileName: string): string {
+  const rootPath = resolve(process.cwd(), "supabase/migrations", fileName);
+  if (existsSync(rootPath)) return readFileSync(rootPath, "utf-8");
+  const fallbackPath = resolve(process.cwd(), "../../supabase/migrations", fileName);
+  if (existsSync(fallbackPath)) return readFileSync(fallbackPath, "utf-8");
+  throw new Error(`Migration file not found: ${fileName}`);
+}
+
 describe("Supabase Multi-Tenant SQL Migration Validation", () => {
-  const migrationPath = resolve(
-    process.cwd(),
-    "supabase/migrations/20260827120000_init_multi_tenant_schema.sql"
-  );
-  const sql = readFileSync(migrationPath, "utf-8");
+  const sql = getMigrationSql("20260827120000_init_multi_tenant_schema.sql");
 
   const requiredTables = [
     "profiles",
@@ -160,21 +164,13 @@ describe("Supabase Multi-Tenant SQL Migration Validation", () => {
   });
 
   it("defines unique index on monitored_pages(project_id, canonical_url) in migration", () => {
-    const uniquenessMigrationPath = resolve(
-      process.cwd(),
-      "supabase/migrations/20260827130000_monitored_page_uniqueness.sql",
-    );
-    const uniquenessSql = readFileSync(uniquenessMigrationPath, "utf-8");
+    const uniquenessSql = getMigrationSql("20260827130000_monitored_page_uniqueness.sql");
     expect(uniquenessSql).toContain("uq_monitored_pages_project_url");
     expect(uniquenessSql).toMatch(/CREATE\s+UNIQUE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+uq_monitored_pages_project_url\s+ON\s+public\.monitored_pages\s*\(\s*project_id\s*,\s*canonical_url\s*\)/i);
   });
 
   it("defines latest_successful_audit_run_id, idempotency_key, and persist_completed_audit_report RPC in migration", () => {
-    const auditMigrationPath = resolve(
-      process.cwd(),
-      "supabase/migrations/20260827140000_audit_persistence_and_idempotency.sql",
-    );
-    const auditSql = readFileSync(auditMigrationPath, "utf-8");
+    const auditSql = getMigrationSql("20260827140000_audit_persistence_and_idempotency.sql");
     expect(auditSql).toContain("latest_successful_audit_run_id");
     expect(auditSql).toContain("idempotency_key");
     expect(auditSql).toContain("uq_audit_runs_idempotency");
@@ -184,11 +180,7 @@ describe("Supabase Multi-Tenant SQL Migration Validation", () => {
   });
 
   it("defines alerts and alert_deliveries tables with RLS and uniqueness constraints in migration", () => {
-    const alertsMigrationPath = resolve(
-      process.cwd(),
-      "supabase/migrations/20260829120000_alerts_and_delivery.sql",
-    );
-    const alertsSql = readFileSync(alertsMigrationPath, "utf-8");
+    const alertsSql = getMigrationSql("20260829120000_alerts_and_delivery.sql");
 
     expect(alertsSql).toContain("CREATE TABLE IF NOT EXISTS public.alerts");
     expect(alertsSql).toContain("CREATE TABLE IF NOT EXISTS public.alert_deliveries");
@@ -216,11 +208,7 @@ describe("Supabase Multi-Tenant SQL Migration Validation", () => {
   });
 
   it("defines work_items and work_item_activities tables with atomic RPCs, DB assignee validation, and RLS in migration", () => {
-    const workItemsMigrationPath = resolve(
-      process.cwd(),
-      "supabase/migrations/20260830120000_work_items_and_collaboration.sql",
-    );
-    const workItemsSql = readFileSync(workItemsMigrationPath, "utf-8");
+    const workItemsSql = getMigrationSql("20260830120000_work_items_and_collaboration.sql");
 
     expect(workItemsSql).toContain("CREATE TABLE IF NOT EXISTS public.work_items");
     expect(workItemsSql).toContain("CREATE TABLE IF NOT EXISTS public.work_item_activities");
@@ -259,6 +247,38 @@ describe("Supabase Multi-Tenant SQL Migration Validation", () => {
     expect(workItemsSql).toContain("FUNCTION public.create_work_item_atomic");
     expect(workItemsSql).toContain("FUNCTION public.update_work_item_atomic");
   });
+
+  it("defines report_share_links table with token hash uniqueness, RLS, and isolated public resolver RPC", () => {
+    const shareSql = getMigrationSql("20260830130000_report_share_links.sql");
+
+    expect(shareSql).toContain("CREATE TABLE IF NOT EXISTS public.report_share_links");
+
+    // Foreign keys & cascades
+    expect(shareSql).toMatch(/organization_id\s+UUID\s+NOT\s+NULL\s+REFERENCES\s+public\.organizations\(id\)\s+ON\s+DELETE\s+CASCADE/i);
+    expect(shareSql).toMatch(/project_id\s+UUID\s+NOT\s+NULL\s+REFERENCES\s+public\.projects\(id\)\s+ON\s+DELETE\s+CASCADE/i);
+    expect(shareSql).toMatch(/monitored_page_id\s+UUID\s+NOT\s+NULL\s+REFERENCES\s+public\.monitored_pages\(id\)\s+ON\s+DELETE\s+CASCADE/i);
+    expect(shareSql).toMatch(/audit_run_id\s+UUID\s+NOT\s+NULL\s+REFERENCES\s+public\.audit_runs\(id\)\s+ON\s+DELETE\s+CASCADE/i);
+    expect(shareSql).toMatch(/audit_report_id\s+UUID\s+NOT\s+NULL\s+REFERENCES\s+public\.audit_reports\(id\)\s+ON\s+DELETE\s+CASCADE/i);
+
+    // Token hash index
+    expect(shareSql).toContain("uq_report_share_links_token_hash");
+
+    // RLS enabled and forced
+    expect(shareSql).toContain("ALTER TABLE public.report_share_links ENABLE ROW LEVEL SECURITY;");
+    expect(shareSql).toContain("ALTER TABLE public.report_share_links FORCE ROW LEVEL SECURITY;");
+
+    // RLS policies
+    expect(shareSql).toContain("report_share_links_select_policy");
+    expect(shareSql).toContain("report_share_links_insert_policy");
+    expect(shareSql).toContain("report_share_links_update_policy");
+    expect(shareSql).toContain("report_share_links_delete_policy");
+
+    // Isolated public resolver RPC
+    expect(shareSql).toContain("FUNCTION public.get_shared_audit_report(p_token_hash text)");
+    expect(shareSql).toContain("SECURITY DEFINER");
+    expect(shareSql).toContain("SET search_path = public, pg_temp");
+  });
 });
+
 
 

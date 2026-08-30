@@ -18,6 +18,8 @@ import type { AuditPersistenceStore } from "../audits/audit-store.js";
 import type { AnalysisOutcome } from "@pagepilot/audit-engine";
 import { createWorkItemsRouter } from "../work-items/routes.js";
 import type { WorkItemsStore } from "../work-items/work-items-store.js";
+import { createShareRouter } from "../share/routes.js";
+import type { SharePersistenceStore } from "../share/share-store.js";
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -37,6 +39,7 @@ export interface ProjectRoutesOptions {
   getStore?: (req: Request) => ProjectsStore;
   getAuditStore?: (req: Request) => AuditPersistenceStore;
   getWorkItemsStore?: (req: Request) => WorkItemsStore;
+  getShareStore?: (req: Request) => SharePersistenceStore;
   analyzeUrl?: (url: string) => Promise<AnalysisOutcome>;
 }
 
@@ -538,5 +541,18 @@ export function createProjectsRouter(options: ProjectRoutesOptions = {}): Router
     }),
   );
 
+  // =========================================================================
+  // 5. Report Share Links (Nested under /:projectId)
+  // =========================================================================
+  router.use(
+    "/:projectId",
+    createShareRouter({
+      getProjectsStore: getStore,
+      getAuditStore: options.getAuditStore,
+      getShareStore: options.getShareStore,
+    }),
+  );
+
   return router;
 }
+

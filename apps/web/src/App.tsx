@@ -11,6 +11,7 @@ import { AuthNav } from "./features/auth/components/auth-nav";
 
 import { useAuth } from "./features/auth/auth-context";
 import { WorkspaceShell } from "./features/workspace/components/workspace-shell";
+import { SharedReportPage } from "./features/share/components/shared-report-page";
 
 /**
  * Minimum time the loading view stays up. Fast API responses would
@@ -23,6 +24,12 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function getSharedReportToken(): string | null {
+  if (typeof window === "undefined") return null;
+  const match = window.location.pathname.match(/^\/shared\/reports\/([a-zA-Z0-9_-]+)/);
+  return match ? match[1] ?? null : null;
+}
+
 type View =
   | { name: "landing" }
   | { name: "analyzing"; url: string }
@@ -31,13 +38,35 @@ type View =
 
 export function AppContent() {
   const { user } = useAuth();
+  const [sharedToken, setSharedToken] = useState<string | null>(() => getSharedReportToken());
   const [viewMode, setViewMode] = useState<"workspace" | "one-off">("workspace");
   const [view, setView] = useState<View>({ name: "landing" });
   const [draftUrl, setDraftUrl] = useState("");
 
   useEffect(() => {
+    const handlePopState = () => {
+      setSharedToken(getSharedReportToken());
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  useEffect(() => {
     window.scrollTo(0, 0);
-  }, [view, viewMode]);
+  }, [view, viewMode, sharedToken]);
+
+  // If viewing a shared report, render the dedicated public standalone view
+  if (sharedToken) {
+    return (
+      <SharedReportPage
+        token={sharedToken}
+        onNavigateHome={() => {
+          window.history.pushState({}, "", "/");
+          setSharedToken(null);
+        }}
+      />
+    );
+  }
 
   const handleAnalyze = useCallback((url: string) => {
     setDraftUrl(url);

@@ -194,8 +194,8 @@ This roadmap defines the evolution of PagePilot from a single-project MVP into a
 ---
 
 ### Milestone 4: Collaboration & Prioritization
-- **Status:** `Active` (Task 4.1 Data Model & Secure API Foundation & Task 4.2 Collaboration Backlog UI Complete & Verified; Task 4.3 Shared Links Planned)
-- **Product Outcome:** Audit findings become a prioritized work queue that teams can assign, discuss, and track to resolution.
+- **Status:** `Complete & Verified` (Task 4.1 Data Model & Secure API, Task 4.2 Collaboration Backlog UI, & Task 4.3 Read-Only Shared Links Complete & Verified; runtime RLS pending staging)
+- **Product Outcome:** Audit findings become a prioritized work queue that teams can assign, discuss, and track to resolution, with secure external sharing for immutable audit evidence.
 - **Dependencies:** Milestone 2, Milestone 3.
 - **Tasks:**
   - **Task 4.1 — Collaboration & Prioritization Data Model + Secure API Foundation (`Complete & Verified`)**:
@@ -214,8 +214,17 @@ This roadmap defines the evolution of PagePilot from a single-project MVP into a
     - Integrated `+ Track Work Item` triggers into `FindingCard`, `TopProblems`, `DetailedRecommendations`, `ReportView`, and `HistoricalReportView` without mutating immutable historical audit payloads.
     - Added **Work Backlog** tab in `WorkspaceShell` with smooth cross-navigation to monitored pages and historical reports.
     - Strictly enforced role-based permissions (viewers are read-only with interactive controls disabled) and verified at 375px, 768px, 1440px with keyboard navigation and reduced-motion support.
-  - **Task 4.3 — Read-Only Shared Report Links (`Planned`)**:
-    - Secure, revocable public read-only links for sharing audit evidence with external stakeholders.
+  - **Task 4.3 — Read-Only Shared Report Links (`Complete & Verified`)**:
+    - Multi-tenant database migration `20260830130000_report_share_links.sql` creating `public.report_share_links` and isolated `SECURITY DEFINER` stored procedure `public.get_shared_audit_report(p_token_hash text)` running with `SET search_path = public, pg_temp;`.
+    - Cryptographic token architecture: 256-bit cryptographically secure pseudorandom entropy (`base64url`), plaintext returned only once upon creation, database persists only deterministic SHA-256 hash (`token_hash`) with unique index.
+    - Strict public projection isolation: RPC projects only sanitized report payload, scores, findings, recommendations, and safe share metadata; never leaks `organization_id`, member emails, user IDs, work items, or alerts.
+    - Uniform 404 error obfuscation on invalid, expired, revoked, or nonexistent tokens (`"This report link is no longer available."`) preventing enumeration attacks.
+    - Rate-limiting (60 req / 10 min per IP) and anti-indexing headers (`noindex, nofollow`, `no-store`, `nosniff`).
+    - Expiration selection (7d, 30d, 90d, 365d) and immediate workspace-level revocation by authenticated members.
+    - `<ShareReportModal />` dialog integrated into `HistoricalReportView` with copyable share URL and revocation confirmation.
+    - Standalone `<SharedReportPage />` at `/shared/reports/:token` rendering read-only immutable report evidence without workspace navigation sidebars, edit controls, or tracking buttons.
+    - Contracts (`reportShareLinkSchema`, `createShareLinkRequestSchema`, `createShareLinkResponseSchema`, `shareLinkMetadataSchema`, `sharedAuditReportResponseSchema`), API endpoints, and Web client tested.
+    - Runtime RLS status: Database migration, schema, policies, and RPC tested in automated contract and unit/integration test suites; runtime live Supabase RLS verification marked `PENDING STAGING`.
 - **Must Include:**
   - Finding work item statuses: `open`, `in_progress`, `resolved`, `dismissed`.
   - Work item metadata: assignee, note, tag, resolution rationale, actor audit logs.
@@ -225,6 +234,7 @@ This roadmap defines the evolution of PagePilot from a single-project MVP into a
 - **Acceptance Criteria:**
   - Status mutations record actor and timestamp without mutating historical audit report content.
   - Role-based permissions enforced: viewers cannot mutate work items; members can only mutate their organization's work.
+  - Shared recipient can only view the explicitly shared historical report without workspace access.
 
 ---
 

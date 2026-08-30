@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   auditReportSchema,
   auditRunSchema,
+  createShareLinkRequestSchema,
+  createShareLinkResponseSchema,
   createWorkItemSchema,
   findingEntitySchema,
   membershipSchema,
@@ -14,8 +16,11 @@ import {
   projectSchema,
   recommendationEntitySchema,
   REPORT_SCHEMA_VERSION,
+  reportShareLinkSchema,
   roleSchema,
   scoreSnapshotSchema,
+  sharedAuditReportResponseSchema,
+  shareLinkMetadataSchema,
   updateWorkItemSchema,
   workItemActivitySchema,
   workItemFiltersSchema,
@@ -25,6 +30,130 @@ import {
 describe("Database Contracts & Schemas", () => {
   const validUuid = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";
   const validTimestamp = "2026-08-27T12:00:00.000Z";
+
+  const sampleReportPayload = {
+    source: {
+      requestedUrl: "https://acme.com/pricing",
+      finalUrl: "https://acme.com/pricing",
+      analyzedAt: validTimestamp,
+      title: "Acme Pricing",
+    },
+    overallScore: 82,
+    scoreConfidence: "blended" as const,
+    summary: "Clear value proposition with strong CTA hierarchy.",
+    categories: [
+      {
+        category: "clarity" as const,
+        score: 85,
+        confidence: "blended" as const,
+        explanation: "Clear messaging.",
+        severity: "low" as const,
+        findings: [],
+      },
+      {
+        category: "visualHierarchy" as const,
+        score: 80,
+        confidence: "blended" as const,
+        explanation: "Good structure.",
+        severity: "low" as const,
+        findings: [],
+      },
+      {
+        category: "ctaEffectiveness" as const,
+        score: 90,
+        confidence: "blended" as const,
+        explanation: "Strong buttons.",
+        severity: "low" as const,
+        findings: [],
+      },
+      {
+        category: "copy" as const,
+        score: 75,
+        confidence: "blended" as const,
+        explanation: "Good copy.",
+        severity: "low" as const,
+        findings: [],
+      },
+      {
+        category: "accessibility" as const,
+        score: 88,
+        confidence: "blended" as const,
+        explanation: "High contrast.",
+        severity: "low" as const,
+        findings: [],
+      },
+      {
+        category: "mobileUx" as const,
+        score: 78,
+        confidence: "blended" as const,
+        explanation: "Responsive.",
+        severity: "low" as const,
+        findings: [],
+      },
+      {
+        category: "trustCredibility" as const,
+        score: 80,
+        confidence: "blended" as const,
+        explanation: "Trust badges visible.",
+        severity: "low" as const,
+        findings: [],
+      },
+    ],
+    topProblems: [
+      {
+        title: "Missing testimonial source",
+        severity: "medium" as const,
+        evidence: "Quotes lack attributions",
+        basis: "observed" as const,
+        signalIds: ["sig-1"],
+        recommendation: "Add customer names and logos",
+        category: "trustCredibility" as const,
+      },
+      {
+        title: "Secondary CTA low contrast",
+        severity: "low" as const,
+        evidence: "Gray on white button",
+        basis: "observed" as const,
+        signalIds: ["sig-2"],
+        recommendation: "Increase contrast ratio",
+        category: "visualHierarchy" as const,
+      },
+      {
+        title: "Lengthy feature list",
+        severity: "low" as const,
+        evidence: "18 bullet points",
+        basis: "observed" as const,
+        signalIds: ["sig-3"],
+        recommendation: "Group features into collapsible tabs",
+        category: "copy" as const,
+      },
+    ],
+    quickWins: [
+      {
+        title: "Add sticky header CTA",
+        detail: "Keep conversion path visible during scroll.",
+        category: "ctaEffectiveness" as const,
+      },
+      {
+        title: "Highlight primary plan",
+        detail: "Add recommended badge to pro tier.",
+        category: "visualHierarchy" as const,
+      },
+      {
+        title: "Add security badge",
+        detail: "Include SOC2 icon near checkout link.",
+        category: "trustCredibility" as const,
+      },
+    ],
+    detailedRecommendations: [
+      {
+        title: "Restructure pricing grid",
+        detail: "Align feature comparison rows for faster scanning.",
+        category: "visualHierarchy" as const,
+      },
+    ],
+    observedSignals: [],
+  };
 
   it("exports the canonical REPORT_SCHEMA_VERSION", () => {
     expect(REPORT_SCHEMA_VERSION).toBe("1.0.0");
@@ -146,130 +275,6 @@ describe("Database Contracts & Schemas", () => {
       updatedAt: validTimestamp,
     };
     expect(auditRunSchema.parse(validRun)).toEqual(validRun);
-
-    const sampleReportPayload = {
-      source: {
-        requestedUrl: "https://acme.com/pricing",
-        finalUrl: "https://acme.com/pricing",
-        analyzedAt: validTimestamp,
-        title: "Acme Pricing",
-      },
-      overallScore: 82,
-      scoreConfidence: "blended" as const,
-      summary: "Clear value proposition with strong CTA hierarchy.",
-      categories: [
-        {
-          category: "clarity" as const,
-          score: 85,
-          confidence: "blended" as const,
-          explanation: "Clear messaging.",
-          severity: "low" as const,
-          findings: [],
-        },
-        {
-          category: "visualHierarchy" as const,
-          score: 80,
-          confidence: "blended" as const,
-          explanation: "Good structure.",
-          severity: "low" as const,
-          findings: [],
-        },
-        {
-          category: "ctaEffectiveness" as const,
-          score: 90,
-          confidence: "blended" as const,
-          explanation: "Strong buttons.",
-          severity: "low" as const,
-          findings: [],
-        },
-        {
-          category: "copy" as const,
-          score: 75,
-          confidence: "blended" as const,
-          explanation: "Good copy.",
-          severity: "low" as const,
-          findings: [],
-        },
-        {
-          category: "accessibility" as const,
-          score: 88,
-          confidence: "blended" as const,
-          explanation: "High contrast.",
-          severity: "low" as const,
-          findings: [],
-        },
-        {
-          category: "mobileUx" as const,
-          score: 78,
-          confidence: "blended" as const,
-          explanation: "Responsive.",
-          severity: "low" as const,
-          findings: [],
-        },
-        {
-          category: "trustCredibility" as const,
-          score: 80,
-          confidence: "blended" as const,
-          explanation: "Trust badges visible.",
-          severity: "low" as const,
-          findings: [],
-        },
-      ],
-      topProblems: [
-        {
-          title: "Missing testimonial source",
-          severity: "medium" as const,
-          evidence: "Quotes lack attributions",
-          basis: "observed" as const,
-          signalIds: ["sig-1"],
-          recommendation: "Add customer names and logos",
-          category: "trustCredibility" as const,
-        },
-        {
-          title: "Secondary CTA low contrast",
-          severity: "low" as const,
-          evidence: "Gray on white button",
-          basis: "observed" as const,
-          signalIds: ["sig-2"],
-          recommendation: "Increase contrast ratio",
-          category: "visualHierarchy" as const,
-        },
-        {
-          title: "Lengthy feature list",
-          severity: "low" as const,
-          evidence: "18 bullet points",
-          basis: "observed" as const,
-          signalIds: ["sig-3"],
-          recommendation: "Group features into collapsible tabs",
-          category: "copy" as const,
-        },
-      ],
-      quickWins: [
-        {
-          title: "Add sticky header CTA",
-          detail: "Keep conversion path visible during scroll.",
-          category: "ctaEffectiveness" as const,
-        },
-        {
-          title: "Highlight primary plan",
-          detail: "Add recommended badge to pro tier.",
-          category: "visualHierarchy" as const,
-        },
-        {
-          title: "Add security badge",
-          detail: "Include SOC2 icon near checkout link.",
-          category: "trustCredibility" as const,
-        },
-      ],
-      detailedRecommendations: [
-        {
-          title: "Restructure pricing grid",
-          detail: "Align feature comparison rows for faster scanning.",
-          category: "visualHierarchy" as const,
-        },
-      ],
-      observedSignals: [],
-    };
 
     const validReportEntity = {
       id: validUuid,
@@ -472,5 +477,111 @@ describe("Database Contracts & Schemas", () => {
     expect(parsed.limit).toBe(25);
     expect(parsed.offset).toBe(10);
   });
+
+  it("validates reportShareLinkSchema, createShareLinkRequestSchema, and shareLinkMetadataSchema", () => {
+    const validShareLink = {
+      id: validUuid,
+      organizationId: validUuid,
+      projectId: validUuid,
+      monitoredPageId: validUuid,
+      auditRunId: validUuid,
+      auditReportId: validUuid,
+      tokenHash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      createdByUserId: validUuid,
+      expiresAt: validTimestamp,
+      revokedAt: null,
+      createdAt: validTimestamp,
+      lastAccessedAt: validTimestamp,
+    };
+    expect(reportShareLinkSchema.parse(validShareLink)).toEqual(validShareLink);
+
+    // createShareLinkRequestSchema defaults to 30 days
+    expect(createShareLinkRequestSchema.parse({})).toEqual({ expiresInDays: 30 });
+    expect(createShareLinkRequestSchema.parse({ expiresInDays: 7 })).toEqual({ expiresInDays: 7 });
+    expect(() => createShareLinkRequestSchema.parse({ expiresInDays: 0 })).toThrow();
+    expect(() => createShareLinkRequestSchema.parse({ expiresInDays: 366 })).toThrow();
+
+    // createShareLinkResponseSchema
+    const response = {
+      shareLink: {
+        id: validUuid,
+        shareUrl: "/shared/reports/mock-token",
+        token: "mock-token",
+        expiresAt: validTimestamp,
+        createdAt: validTimestamp,
+      },
+    };
+    expect(createShareLinkResponseSchema.parse(response)).toEqual(response);
+
+    // shareLinkMetadataSchema
+    const meta = {
+      id: validUuid,
+      auditRunId: validUuid,
+      auditReportId: validUuid,
+      expiresAt: validTimestamp,
+      revokedAt: null,
+      isRevoked: false,
+      isExpired: false,
+      createdAt: validTimestamp,
+      lastAccessedAt: null,
+    };
+    expect(shareLinkMetadataSchema.parse(meta)).toEqual(meta);
+
+    // sharedAuditReportResponseSchema
+    const validSharedReport = {
+      report: {
+        id: validUuid,
+        auditRunId: validUuid,
+        monitoredPageId: validUuid,
+        projectId: validUuid,
+        organizationId: validUuid,
+        schemaVersion: REPORT_SCHEMA_VERSION,
+        modelIdentifier: "gemini-3.6-flash",
+        checkVersion: "1.0.0",
+        scoringVersion: "1.0.0",
+        summary: "Clear value proposition with strong CTA hierarchy.",
+        overallScore: 82,
+        scoreConfidence: "blended" as const,
+        reportPayload: sampleReportPayload,
+        createdAt: validTimestamp,
+      },
+      auditRun: {
+        id: validUuid,
+        monitoredPageId: validUuid,
+        projectId: validUuid,
+        organizationId: validUuid,
+        invocationType: "manual" as const,
+        status: "completed" as const,
+        targetUrl: "https://acme.com/pricing",
+        finalUrl: "https://acme.com/pricing",
+        triggeredByUserId: validUuid,
+        startedAt: validTimestamp,
+        completedAt: validTimestamp,
+        failedAt: null,
+        errorCode: null,
+        errorMessage: null,
+        retryable: null,
+        modelVersion: "gemini-3.6-flash",
+        checkVersion: "1.0.0",
+        promptVersion: "1.0.0",
+        scoringVersion: "1.0.0",
+        retryCount: 0,
+        maxRetries: 3,
+        createdAt: validTimestamp,
+        updatedAt: validTimestamp,
+      },
+      scoreSnapshots: [],
+      findings: [],
+      recommendations: [],
+      shareMetadata: {
+        id: validUuid,
+        createdAt: validTimestamp,
+        expiresAt: validTimestamp,
+      },
+    };
+    expect(sharedAuditReportResponseSchema.parse(validSharedReport)).toEqual(validSharedReport);
+  });
 });
+
+
 
