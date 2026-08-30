@@ -1,7 +1,13 @@
 import type { Finding } from "@pagepilot/contracts";
 import { FindingCard } from "./finding-card";
 
-export function TopProblems({ problems }: { problems: Finding[] }) {
+export function TopProblems({
+  problems,
+  onCreateWorkItem,
+}: {
+  problems: Finding[];
+  onCreateWorkItem?: (finding: Finding) => void;
+}) {
   return (
     <section className="mt-8 sm:mt-12" aria-labelledby="top-problems-heading">
       <h2
@@ -16,7 +22,11 @@ export function TopProblems({ problems }: { problems: Finding[] }) {
       <ol className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-3">
         {problems.map((problem, index) => (
           <li key={problem.title}>
-            <FindingCard finding={problem} rank={index + 1} />
+            <FindingCard
+              finding={problem}
+              rank={index + 1}
+              onCreateWorkItem={onCreateWorkItem}
+            />
           </li>
         ))}
       </ol>

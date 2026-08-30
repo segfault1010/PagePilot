@@ -392,3 +392,30 @@ To turn persisted audit findings and recommendations into tenant-scoped collabor
 - **Contracts Synchronization**:
   - Added `workItemSchema`, `workItemActivitySchema`, `createWorkItemSchema`, `updateWorkItemSchema`, `workItemFiltersSchema`, and responses in `@pagepilot/contracts` with strict note/tag bounds (notes $\le 5000$ chars, tags $\le 20$ items $\times 50$ chars, rationale $\le 2000$ chars).
 
+## D55 — Collaboration Workspace UI, Filterable Backlog, Member Assignee Selection, and Historical Report Tracking (Milestone 4)
+
+To provide an authenticated collaboration experience for growth teams prioritizing and resolving landing page UX issues without mutating immutable audit evidence:
+- **Work Backlog UI & Filterable Prioritization Queue**:
+  - Built `<WorkItemsBacklog />` in `apps/web/src/features/work-items/components/work-items-backlog.tsx`.
+  - Multi-dimensional filtering across Status (`All`, `Open`, `In Progress`, `Resolved`, `Dismissed`), Severity (`All`, `High`, `Medium`, `Low`), Assignee (`All`, `Unassigned`, and specific members), Monitored Page, and UX Category.
+  - Multi-directional sorting by Severity/Priority, Recent Updates, Status, and Title.
+  - Empty states distinguish `"Nothing needs attention yet."` (zero work items) from `"No work items match these filters."` (filtered out).
+- **Assignee Selection Restricted to Organization Members**:
+  - Assignee selectors in creation and detail modals are strictly populated from verified organization members loaded via `GET /api/workspace/members`.
+  - Freeform email entry is disallowed, upholding tenant boundary invariants established in `D54`.
+- **Detail Modal, Resolution Rationale, and Append-Only Activity Trail**:
+  - Built `<WorkItemDetailModal />` in `apps/web/src/features/work-items/components/work-item-detail-modal.tsx`.
+  - Accessible dialog (`role="dialog"`, `aria-modal="true"`, `Escape` to close, visible focus rings) providing quick status transitions (`Start Progress`, `Resolve Issue`, `Dismiss`, `Reopen Issue`).
+  - Required resolution rationale textarea when resolving (2000 character bound).
+  - Note editor (5000 character bound) and interactive tag manager (max 20 tags $\le 50$ characters).
+  - Activity history feed displaying chronological immutable timeline of actions (`created`, `status_changed`, `assigned`, `unassigned`, `updated`) with actors and timestamp formatting.
+  - Deep links to monitored landing page and source historical audit report.
+- **Creation from Audit Findings & Recommendations with 409 Conflict Handling**:
+  - Added `+ Track Work Item` trigger buttons on findings and recommendations in `FindingCard`, `TopProblems`, `DetailedRecommendations`, `ReportView`, and `HistoricalReportView`.
+  - `<CreateWorkItemModal />` in `apps/web/src/features/work-items/components/create-work-item-modal.tsx` pre-populates finding/recommendation titles, evidence, category, and severity.
+  - Catches duplicate partial unique index violations (Postgres 409 conflict) with the exact user copy: `"That finding/recommendation already has a work item."`
+- **Role-Based Permissions & Immutability**:
+  - Viewer role: read-only access with interactive controls disabled (`disabled={isViewer}`) and clear helper text explaining read-only permissions.
+  - Historical audit reports and database finding/recommendation rows remain 100% immutable. Tracked work items exist exclusively in `public.work_items` with separate lifecycles.
+
+

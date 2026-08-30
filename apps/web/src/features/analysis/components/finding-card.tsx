@@ -10,9 +10,11 @@ import { Badge, SEVERITY_TONE } from "./badge";
 export function FindingCard({
   finding,
   rank,
+  onCreateWorkItem,
 }: {
   finding: Finding;
   rank?: number;
+  onCreateWorkItem?: (finding: Finding) => void;
 }) {
   return (
     <article className="flex h-full flex-col rounded-xl border border-neutral-800 bg-neutral-900 p-5">
@@ -54,6 +56,17 @@ export function FindingCard({
           </span>
           {finding.recommendation}
         </p>
+        {onCreateWorkItem && (
+          <div className="mt-3 flex justify-end">
+            <button
+              type="button"
+              onClick={() => onCreateWorkItem(finding)}
+              className="inline-flex items-center gap-1 text-xs font-medium text-neutral-400 hover:text-white transition"
+            >
+              + Track Work Item
+            </button>
+          </div>
+        )}
       </div>
     </article>
   );

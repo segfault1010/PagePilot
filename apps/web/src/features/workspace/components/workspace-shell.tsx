@@ -4,6 +4,7 @@ import type {
   CreateMonitoredPageInput,
   CreateProjectInput,
   MonitoredPage,
+  OrganizationMember,
   PersistedAuditReportResponse,
   Project,
   Role,
@@ -30,10 +31,12 @@ import {
   listAuditHistory,
   triggerManualAudit,
 } from "../../audits/api";
+import { listOrganizationMembers } from "../../work-items/api";
 import { ProjectList } from "./project-list";
 import { ProjectDetail } from "./project-detail";
 import { PageDetail } from "./page-detail";
 import { HistoricalReportView } from "./historical-report-view";
+import { WorkItemsBacklog } from "../../work-items/components/work-items-backlog";
 
 const PAGE_SIZE = 10;
 
@@ -45,6 +48,12 @@ export function WorkspaceShell({ onSwitchToOneOffAudit }: WorkspaceShellProps) {
   const { user, workspace, signOut } = useAuth();
   const role: Role = workspace?.role || "owner";
   const orgName = workspace?.organization.name || "Workspace";
+
+  // Navigation tab state
+  const [navSection, setNavSection] = useState<"projects" | "work">("projects");
+
+  // Organization Members
+  const [members, setMembers] = useState<OrganizationMember[]>([]);
 
   // Navigation / Selection State
   const [projects, setProjects] = useState<Project[]>([]);
@@ -111,6 +120,22 @@ export function WorkspaceShell({ onSwitchToOneOffAudit }: WorkspaceShellProps) {
   useEffect(() => {
     fetchProjects();
   }, [fetchProjects]);
+
+  // ---------------------------------------------------------------------------
+  // Fetch Organization Members
+  // ---------------------------------------------------------------------------
+  const fetchMembers = useCallback(async () => {
+    try {
+      const res = await listOrganizationMembers();
+      setMembers(res.members);
+    } catch (err: any) {
+      console.error("[workspace] failed to load organization members:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchMembers();
+  }, [fetchMembers]);
 
   // ---------------------------------------------------------------------------
   // 2. Fetch Pages for Selected Project & Validate Stored Page Safely
@@ -197,6 +222,7 @@ export function WorkspaceShell({ onSwitchToOneOffAudit }: WorkspaceShellProps) {
     setSelectedPage(null);
     sessionStorage.removeItem("pagepilot_selected_page_id");
     setActiveReport(null);
+    setNavSection("projects");
   };
 
   const handleBackToProjects = () => {
@@ -207,6 +233,7 @@ export function WorkspaceShell({ onSwitchToOneOffAudit }: WorkspaceShellProps) {
     setSelectedPage(null);
     sessionStorage.removeItem("pagepilot_selected_page_id");
     setActiveReport(null);
+    setNavSection("projects");
   };
 
   const handleCreateProject = async (data: CreateProjectInput) => {
@@ -242,6 +269,7 @@ export function WorkspaceShell({ onSwitchToOneOffAudit }: WorkspaceShellProps) {
     sessionStorage.setItem("pagepilot_selected_page_id", page.id);
     setHistoryPage(1);
     setActiveReport(null);
+    setNavSection("projects");
   };
 
   const handleBackToProject = () => {
@@ -249,6 +277,7 @@ export function WorkspaceShell({ onSwitchToOneOffAudit }: WorkspaceShellProps) {
     setSelectedPage(null);
     sessionStorage.removeItem("pagepilot_selected_page_id");
     setActiveReport(null);
+    setNavSection("projects");
   };
 
   const handleCreatePage = async (data: CreateMonitoredPageInput) => {
@@ -344,14 +373,31 @@ export function WorkspaceShell({ onSwitchToOneOffAudit }: WorkspaceShellProps) {
             <nav className="hidden sm:flex items-center gap-2 border-l border-neutral-800 pl-6 text-xs">
               <button
                 type="button"
-                onClick={handleBackToProjects}
+                onClick={() => {
+                  setNavSection("projects");
+                  setActiveReport(null);
+                }}
                 className={`rounded-md px-3 py-1.5 font-medium transition ${
-                  !activeReport
+                  navSection === "projects"
                     ? "bg-neutral-900 text-neutral-100"
                     : "text-neutral-400 hover:text-neutral-200"
                 }`}
               >
                 Projects
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setNavSection("work");
+                  setActiveReport(null);
+                }}
+                className={`rounded-md px-3 py-1.5 font-medium transition ${
+                  navSection === "work"
+                    ? "bg-neutral-900 text-neutral-100"
+                    : "text-neutral-400 hover:text-neutral-200"
+                }`}
+              >
+                Work Backlog
               </button>
               <button
                 type="button"
@@ -402,10 +448,46 @@ export function WorkspaceShell({ onSwitchToOneOffAudit }: WorkspaceShellProps) {
         )}
 
         {/* View Routing */}
-        {activeReport ? (
+        {navSection === "work" ? (
+          <WorkItemsBacklog
+            projects={projects}
+            selectedProjectId={selectedProjectId}
+            onSelectProject={(pId) => {
+              setSelectedProjectId(pId);
+              const found = projects.find((p) => p.id === pId);
+              if (found) setSelectedProject(found);
+            }}
+            pages={pages}
+            members={members}
+            role={role}
+            onNavigateToPage={(projId, pageId) => {
+              setSelectedProjectId(projId);
+              const foundP = projects.find((p) => p.id === projId);
+              if (foundP) setSelectedProject(foundP);
+              setSelectedPageId(pageId);
+              const foundPg = pages.find((p) => p.id === pageId);
+              if (foundPg) setSelectedPage(foundPg);
+              setNavSection("projects");
+              setActiveReport(null);
+            }}
+            onNavigateToReport={(projId, pageId, runId) => {
+              setSelectedProjectId(projId);
+              const foundP = projects.find((p) => p.id === projId);
+              if (foundP) setSelectedProject(foundP);
+              setSelectedPageId(pageId);
+              const foundPg = pages.find((p) => p.id === pageId);
+              if (foundPg) setSelectedPage(foundPg);
+              setNavSection("projects");
+              handleViewHistoricalReport(runId);
+            }}
+          />
+        ) : activeReport ? (
           <HistoricalReportView
             persistedReport={activeReport}
             isLatest={isLatestReportView}
+            role={role}
+            members={members}
+            pages={pages}
             onBack={handleBackToPageDetail}
           />
         ) : selectedProject && selectedPage ? (

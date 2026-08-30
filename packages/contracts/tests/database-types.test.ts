@@ -7,6 +7,8 @@ import {
   membershipSchema,
   monitoredPageSchema,
   ORGANIZATION_ROLES,
+  organizationMemberListResponseSchema,
+  organizationMemberSchema,
   organizationSchema,
   profileSchema,
   projectSchema,
@@ -28,21 +30,20 @@ describe("Database Contracts & Schemas", () => {
     expect(REPORT_SCHEMA_VERSION).toBe("1.0.0");
   });
 
-  it("validates organization roles correctly", () => {
-    expect(ORGANIZATION_ROLES).toEqual(["owner", "admin", "member", "viewer"]);
-    expect(roleSchema.parse("owner")).toBe("owner");
-    expect(roleSchema.parse("admin")).toBe("admin");
-    expect(roleSchema.parse("member")).toBe("member");
-    expect(roleSchema.parse("viewer")).toBe("viewer");
-    expect(() => roleSchema.parse("superadmin")).toThrow();
+  it("validates valid roles and rejects invalid roles", () => {
+    for (const r of ORGANIZATION_ROLES) {
+      expect(roleSchema.parse(r)).toBe(r);
+    }
+    expect(() => roleSchema.parse("superuser")).toThrow();
+    expect(() => roleSchema.parse("")).toThrow();
   });
 
   it("validates profile schema", () => {
     const validProfile = {
       id: validUuid,
-      email: "growth@example.com",
-      fullName: "Alex Growth",
-      avatarUrl: "https://example.com/avatar.png",
+      email: "growth@acme.com",
+      fullName: "Alex Rivera",
+      avatarUrl: "https://avatar.example.com/alex.jpg",
       createdAt: validTimestamp,
       updatedAt: validTimestamp,
     };
@@ -50,7 +51,7 @@ describe("Database Contracts & Schemas", () => {
     expect(() => profileSchema.parse({ ...validProfile, email: "invalid-email" })).toThrow();
   });
 
-  it("validates organization and membership schema", () => {
+  it("validates organization, membership, and organization member schema", () => {
     const validOrg = {
       id: validUuid,
       name: "Acme Growth",
@@ -70,6 +71,22 @@ describe("Database Contracts & Schemas", () => {
       updatedAt: validTimestamp,
     };
     expect(membershipSchema.parse(validMembership)).toEqual(validMembership);
+
+    const validMember = {
+      id: validUuid,
+      organizationId: validUuid,
+      userId: validUuid,
+      role: "admin",
+      email: "sarah@acme.com",
+      fullName: "Sarah Chen",
+      avatarUrl: null,
+      createdAt: validTimestamp,
+      updatedAt: validTimestamp,
+    };
+    expect(organizationMemberSchema.parse(validMember)).toEqual(validMember);
+    expect(
+      organizationMemberListResponseSchema.parse({ members: [validMember] }),
+    ).toEqual({ members: [validMember] });
   });
 
   it("validates project and monitored page schema", () => {

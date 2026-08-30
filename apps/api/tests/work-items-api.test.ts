@@ -4,6 +4,7 @@ import type {
   CreateWorkItemInput,
   FindingEntity,
   MonitoredPage,
+  OrganizationMember,
   Project,
   RecommendationEntity,
   Role,
@@ -95,6 +96,7 @@ class InMemoryWorkItemsStore implements WorkItemsStore {
   findings: Map<string, FindingEntity> = new Map();
   recommendations: Map<string, RecommendationEntity> = new Map();
   orgMemberships: Map<string, Set<string>> = new Map(); // orgId -> Set of userIds
+  orgMembers: Map<string, OrganizationMember[]> = new Map(); // orgId -> OrganizationMember[]
 
   private counter = 0;
   private nextTimestamp(): string {
@@ -102,13 +104,26 @@ class InMemoryWorkItemsStore implements WorkItemsStore {
     return new Date(Date.now() + this.counter * 1000).toISOString();
   }
 
-  registerMembership(orgId: string, userId: string) {
+  registerMembership(orgId: string, userId: string, memberObj?: OrganizationMember) {
     let set = this.orgMemberships.get(orgId);
     if (!set) {
       set = new Set();
       this.orgMemberships.set(orgId, set);
     }
     set.add(userId);
+
+    if (memberObj) {
+      let list = this.orgMembers.get(orgId);
+      if (!list) {
+        list = [];
+        this.orgMembers.set(orgId, list);
+      }
+      list.push(memberObj);
+    }
+  }
+
+  async listOrganizationMembers(orgId: string): Promise<OrganizationMember[]> {
+    return this.orgMembers.get(orgId) || [];
   }
 
   async validateAssigneeMembership(orgId: string, assigneeId: string): Promise<boolean> {
@@ -1176,6 +1191,65 @@ describe("Work Items & Collaboration API Integration", () => {
       expect(recRes.status).toBe(200);
       expect(recRes.body.workItems).toHaveLength(1);
       expect(recRes.body.workItems[0].sourceType).toBe("recommendation");
+    });
+  });
+
+  describe("GET /api/workspace/members (Workspace Members for Assignee Selection)", () => {
+    it("returns tenant organization members with profile metadata", async () => {
+      const workItemsStore = new InMemoryWorkItemsStore();
+      const projectsStore = new InMemoryProjectsStore();
+      const app = createTestApp(workItemsStore, projectsStore);
+
+      workItemsStore.registerMembership(orgAId, userOwner.id, {
+        id: "mem-owner",
+        organizationId: orgAId,
+        userId: userOwner.id,
+        role: "owner",
+        email: "owner@acme.com",
+        fullName: "Acme Owner",
+        avatarUrl: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+
+      workItemsStore.registerMembership(orgAId, userMember.id, {
+        id: "mem-member",
+        organizationId: orgAId,
+        userId: userMember.id,
+        role: "member",
+        email: "member@acme.com",
+        fullName: "Acme Member",
+        avatarUrl: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+
+      const res = await request(app)
+        .get("/api/workspace/members")
+        .set("Authorization", "Bearer token-owner");
+
+      expect(res.status).toBe(200);
+      expect(res.body.members).toHaveLength(2);
+      expect(res.body.members[0].email).toBe("owner@acme.com");
+      expect(res.body.members[1].email).toBe("member@acme.com");
+    });
+
+    it("rejects unauthenticated requests with 401", async () => {
+      const workItemsStore = new InMemoryWorkItemsStore();
+      const projectsStore = new InMemoryProjectsStore();
+      const app = createTestApp(workItemsStore, projectsStore);
+      const res = await request(app).get("/api/workspace/members");
+      expect(res.status).toBe(401);
+    });
+
+    it("rejects non-GET methods with 405 Method Not Allowed", async () => {
+      const workItemsStore = new InMemoryWorkItemsStore();
+      const projectsStore = new InMemoryProjectsStore();
+      const app = createTestApp(workItemsStore, projectsStore);
+      const res = await request(app)
+        .post("/api/workspace/members")
+        .set("Authorization", "Bearer token-owner");
+      expect(res.status).toBe(405);
     });
   });
 });

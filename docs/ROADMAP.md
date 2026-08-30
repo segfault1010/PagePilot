@@ -194,7 +194,7 @@ This roadmap defines the evolution of PagePilot from a single-project MVP into a
 ---
 
 ### Milestone 4: Collaboration & Prioritization
-- **Status:** `Active` (Task 4.1 Data Model & Secure API Complete & Verified; Task 4.2 UI Backlog Planned)
+- **Status:** `Active` (Task 4.1 Data Model & Secure API Foundation & Task 4.2 Collaboration Backlog UI Complete & Verified; Task 4.3 Shared Links Planned)
 - **Product Outcome:** Audit findings become a prioritized work queue that teams can assign, discuss, and track to resolution.
 - **Dependencies:** Milestone 2, Milestone 3.
 - **Tasks:**
@@ -206,10 +206,14 @@ This roadmap defines the evolution of PagePilot from a single-project MVP into a
     - Immutable historical report guarantee: underlying `findings`, `recommendations`, `audit_reports`, and `score_snapshots` remain 100% untouched when work items are created, modified, or resolved.
     - Zod schemas and TypeScript contracts exported from `@pagepilot/contracts` (`workItemSchema`, `workItemActivitySchema`, `createWorkItemSchema`, `updateWorkItemSchema`, `workItemFiltersSchema`).
     - Authenticated API router mounted at `/api/projects/:projectId/work-items` supporting full CRUD, filtering, assignee/source validation, and safe 404 behavior for cross-tenant or mismatched IDs.
-  - **Task 4.2 — Work Items UI, Backlog Views, & Assignee Actions (`Planned`)**:
-    - Prioritized work queue UI with filtering by status, assignee, and UX category.
-    - Actionable work item cards with status picker, assignee assignment, tags, and notes.
-    - Dedicated resolution modal capturing resolution rationale.
+  - **Task 4.2 — Work Items UI, Backlog Views, & Assignee Actions (`Complete & Verified`)**:
+    - Built comprehensive Web API client (`apps/web/src/features/work-items/api.ts`) with schema parsing and typed `WorkItemsApiClientError`.
+    - Implemented `<WorkItemsBacklog />` with multi-dimensional filtering (Status, Severity, Assignee, Page, Category), multi-criteria sorting (Priority, Recent, Status, Title), status quick-actions, and clear empty states (`"Nothing needs attention yet."`, `"No work items match these filters."`).
+    - Implemented accessible `<WorkItemDetailModal />` dialog with quick status changes, Reopen workflow, organization assignee selector, resolution rationale field (with 2000-char limiter), notes editor (5000-char limiter), interactive tag manager (max 20 tags $\le 50$ chars), and append-only activity history timeline.
+    - Implemented `<CreateWorkItemModal />` with source finding/recommendation pre-population and graceful duplicate conflict handling (`"That finding/recommendation already has a work item."`).
+    - Integrated `+ Track Work Item` triggers into `FindingCard`, `TopProblems`, `DetailedRecommendations`, `ReportView`, and `HistoricalReportView` without mutating immutable historical audit payloads.
+    - Added **Work Backlog** tab in `WorkspaceShell` with smooth cross-navigation to monitored pages and historical reports.
+    - Strictly enforced role-based permissions (viewers are read-only with interactive controls disabled) and verified at 375px, 768px, 1440px with keyboard navigation and reduced-motion support.
   - **Task 4.3 — Read-Only Shared Report Links (`Planned`)**:
     - Secure, revocable public read-only links for sharing audit evidence with external stakeholders.
 - **Must Include:**

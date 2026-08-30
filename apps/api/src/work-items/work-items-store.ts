@@ -2,6 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   AuditCategory,
   CreateWorkItemInput,
+  OrganizationMember,
+  Role,
   Severity,
   UpdateWorkItemInput,
   WorkItem,
@@ -90,6 +92,8 @@ export interface WorkItemsStore {
     orgId: string,
     assigneeId: string,
   ): Promise<boolean>;
+
+  listOrganizationMembers(orgId: string): Promise<OrganizationMember[]>;
 }
 
 export function mapWorkItemRow(row: any): WorkItem {
@@ -440,5 +444,47 @@ export class SupabaseWorkItemsStore implements WorkItemsStore {
 
     if (error || !data || data.length === 0) return false;
     return true;
+  }
+
+  async listOrganizationMembers(orgId: string): Promise<OrganizationMember[]> {
+    const { data, error } = await this.client
+      .from("memberships")
+      .select(
+        `
+        id,
+        organization_id,
+        user_id,
+        role,
+        created_at,
+        updated_at,
+        profile:profiles (
+          id,
+          email,
+          full_name,
+          avatar_url
+        )
+      `
+      )
+      .eq("organization_id", orgId)
+      .order("created_at", { ascending: true });
+
+    if (error || !data) {
+      return [];
+    }
+
+    return data.map((row: any) => {
+      const p = Array.isArray(row.profile) ? row.profile[0] : row.profile;
+      return {
+        id: row.id,
+        organizationId: row.organization_id,
+        userId: row.user_id,
+        role: row.role as Role,
+        email: p?.email || "unknown@user.com",
+        fullName: p?.full_name || null,
+        avatarUrl: p?.avatar_url || null,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      };
+    });
   }
 }

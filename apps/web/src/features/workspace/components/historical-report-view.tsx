@@ -1,21 +1,91 @@
-import type { PersistedAuditReportResponse } from "@pagepilot/contracts";
+import { useState } from "react";
+import type {
+  Finding,
+  MonitoredPage,
+  OrganizationMember,
+  PersistedAuditReportResponse,
+  Recommendation,
+  Role,
+  WorkItem,
+} from "@pagepilot/contracts";
 import { ReportView } from "../../analysis/components/report-view";
+import {
+  CreateWorkItemModal,
+  type PrefillSourceData,
+} from "../../work-items/components/create-work-item-modal";
 
 export interface HistoricalReportViewProps {
   persistedReport: PersistedAuditReportResponse;
   isLatest?: boolean;
+  role?: Role;
+  members?: OrganizationMember[];
+  pages?: MonitoredPage[];
   onBack: () => void;
+  onWorkItemCreated?: (item: WorkItem) => void;
 }
 
 export function HistoricalReportView({
   persistedReport,
   isLatest = false,
+  role = "owner",
+  members = [],
+  pages = [],
   onBack,
+  onWorkItemCreated,
 }: HistoricalReportViewProps) {
-  const { auditRun, report } = persistedReport;
+  const isViewer = role === "viewer";
+  const { auditRun, report, findings = [], recommendations = [] } = persistedReport;
   const analyzedAtDate = auditRun.completedAt
     ? new Date(auditRun.completedAt).toLocaleString()
     : "Completed";
+
+  const [prefillData, setPrefillData] = useState<PrefillSourceData | null>(null);
+
+  const handleTrackFinding = (f: Finding) => {
+    if (isViewer) return;
+    // Find matching FindingEntity by title or description
+    const entity = findings.find(
+      (fe) =>
+        fe.title.trim().toLowerCase() === f.title.trim().toLowerCase() ||
+        fe.title.includes(f.title) ||
+        f.title.includes(fe.title),
+    );
+
+    if (entity) {
+      setPrefillData({
+        sourceType: "finding",
+        findingId: entity.id,
+        pageId: auditRun.monitoredPageId,
+        title: entity.title,
+        description: entity.evidence || f.evidence,
+        category: entity.category || f.category,
+        severity: entity.severity || f.severity,
+      });
+    }
+  };
+
+  const handleTrackRecommendation = (r: Recommendation) => {
+    if (isViewer) return;
+    // Find matching RecommendationEntity by title
+    const entity = recommendations.find(
+      (re) =>
+        re.title.trim().toLowerCase() === r.title.trim().toLowerCase() ||
+        re.title.includes(r.title) ||
+        r.title.includes(re.title),
+    );
+
+    if (entity) {
+      setPrefillData({
+        sourceType: "recommendation",
+        recommendationId: entity.id,
+        pageId: auditRun.monitoredPageId,
+        title: entity.title,
+        description: entity.detail || r.detail,
+        category: entity.category || r.category,
+        severity: "medium",
+      });
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -54,10 +124,30 @@ export function HistoricalReportView({
         </div>
       </div>
 
-      {/* Render the verified ReportView */}
+      {/* Render the verified ReportView with optional work-item tracking */}
       <div className="fade-rise">
-        <ReportView report={report.reportPayload} />
+        <ReportView
+          report={report.reportPayload}
+          onCreateFindingWorkItem={!isViewer ? handleTrackFinding : undefined}
+          onCreateRecommendationWorkItem={
+            !isViewer ? handleTrackRecommendation : undefined
+          }
+        />
       </div>
+
+      {/* Create Work Item Modal */}
+      {prefillData && (
+        <CreateWorkItemModal
+          projectId={auditRun.projectId}
+          pages={pages}
+          members={members}
+          prefillSource={prefillData}
+          onClose={() => setPrefillData(null)}
+          onCreated={(newItem) => {
+            onWorkItemCreated?.(newItem);
+          }}
+        />
+      )}
     </div>
   );
 }

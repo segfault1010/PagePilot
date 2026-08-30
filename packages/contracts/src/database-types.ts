@@ -122,6 +122,26 @@ export const membershipSchema = z.object({
 });
 export type Membership = z.infer<typeof membershipSchema>;
 
+export const organizationMemberSchema = z.object({
+  id: z.string().uuid(),
+  organizationId: z.string().uuid(),
+  userId: z.string().uuid(),
+  role: roleSchema,
+  email: z.string().email(),
+  fullName: z.string().nullable().optional(),
+  avatarUrl: z.string().url().nullable().optional(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+export type OrganizationMember = z.infer<typeof organizationMemberSchema>;
+
+export const organizationMemberListResponseSchema = z.object({
+  members: z.array(organizationMemberSchema),
+});
+export type OrganizationMemberListResponse = z.infer<
+  typeof organizationMemberListResponseSchema
+>;
+
 export const projectSchema = z.object({
   id: z.string().uuid(),
   organizationId: z.string().uuid(),

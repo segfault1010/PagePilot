@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "pnpm --filter @pagepilot/web dev",
     "build": "pnpm --filter @pagepilot/web build",
-    "test": "vitest run",
+    "test": "vitest run --pool=forks --no-file-parallelism",
     "typecheck": "tsc -b",
     "verify:gemini": "node scripts/verify-gemini.mjs"
   },

@@ -7,8 +7,10 @@ import { CATEGORY_LABELS } from "../labels";
  */
 export function DetailedRecommendations({
   recommendations,
+  onCreateWorkItem,
 }: {
   recommendations: Recommendation[];
+  onCreateWorkItem?: (recommendation: Recommendation) => void;
 }) {
   return (
     <section
@@ -34,15 +36,26 @@ export function DetailedRecommendations({
               >
                 {index + 1}
               </span>
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <h3 className="text-sm font-semibold leading-6 text-neutral-100">
-                    {recommendation.title}
-                  </h3>
-                  {recommendation.category && (
-                    <span className="text-xs uppercase tracking-wide text-neutral-600">
-                      {CATEGORY_LABELS[recommendation.category]}
-                    </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <h3 className="text-sm font-semibold leading-6 text-neutral-100">
+                      {recommendation.title}
+                    </h3>
+                    {recommendation.category && (
+                      <span className="text-xs uppercase tracking-wide text-neutral-600">
+                        {CATEGORY_LABELS[recommendation.category]}
+                      </span>
+                    )}
+                  </div>
+                  {onCreateWorkItem && (
+                    <button
+                      type="button"
+                      onClick={() => onCreateWorkItem(recommendation)}
+                      className="inline-flex items-center gap-1 text-xs font-medium text-neutral-400 hover:text-white transition"
+                    >
+                      + Track Work Item
+                    </button>
                   )}
                 </div>
                 <p className="mt-1.5 text-sm leading-6 text-neutral-400">

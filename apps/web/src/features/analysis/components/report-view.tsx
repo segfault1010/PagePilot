@@ -1,4 +1,4 @@
-import type { Report } from "@pagepilot/contracts";
+import type { Finding, Recommendation, Report } from "@pagepilot/contracts";
 import { CategoryGrid } from "./category-grid";
 import { DetailedRecommendations } from "./detailed-recommendations";
 import { ObservedSignals } from "./observed-signals";
@@ -14,21 +14,31 @@ import { TopProblems } from "./top-problems";
 export function ReportView({
   report,
   onAnalyzeAnother,
+  onCreateFindingWorkItem,
+  onCreateRecommendationWorkItem,
 }: {
   report: Report;
   onAnalyzeAnother?: () => void;
+  onCreateFindingWorkItem?: (finding: Finding) => void;
+  onCreateRecommendationWorkItem?: (recommendation: Recommendation) => void;
 }) {
   return (
     <div>
       <ReportHeader report={report} />
 
-      <TopProblems problems={report.topProblems} />
+      <TopProblems
+        problems={report.topProblems}
+        onCreateWorkItem={onCreateFindingWorkItem}
+      />
 
       <CategoryGrid categories={report.categories} />
 
       <QuickWins quickWins={report.quickWins} />
 
-      <DetailedRecommendations recommendations={report.detailedRecommendations} />
+      <DetailedRecommendations
+        recommendations={report.detailedRecommendations}
+        onCreateWorkItem={onCreateRecommendationWorkItem}
+      />
 
       <ObservedSignals signals={report.observedSignals} />
 

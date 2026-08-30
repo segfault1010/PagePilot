@@ -75,6 +75,7 @@ import {
 import type { WorkflowPersistenceStore } from "@pagepilot/workflows";
 import { SupabaseWorkflowPersistenceStore } from "../audits/supabase-workflow-store.js";
 import type { WorkItemsStore } from "../work-items/work-items-store.js";
+import { SupabaseWorkItemsStore } from "../work-items/work-items-store.js";
 
 export interface AppOptions extends AuthMiddlewareOptions {
   /** Injectable for tests; production uses the real safe-fetch pipeline. */
@@ -305,6 +306,46 @@ export function createApp(options: AppOptions = {}): Express {
   );
 
   app.use("/api/workspace/me", (req, res) => {
+    res.set("Allow", "GET");
+    sendApiError(
+      res,
+      405,
+      API_ERROR_CODES.methodNotAllowed,
+      `Method ${req.method} is not allowed.`,
+      false,
+    );
+  });
+
+  // -------------------------------------------------------------------------
+  // Authenticated Tenant Workspace Members Route (Protected)
+  // -------------------------------------------------------------------------
+  app.get(
+    "/api/workspace/members",
+    requireAuth(options),
+    requireWorkspace(options),
+    async (req: Request, res: Response): Promise<void> => {
+      try {
+        const store =
+          options.getWorkItemsStore?.(req) ??
+          new SupabaseWorkItemsStore(undefined, req.authToken);
+        const members = await store.listOrganizationMembers(
+          req.workspace!.organization.id,
+        );
+        res.status(200).json({ members });
+      } catch (err: any) {
+        console.error("[workspace] list members error:", err);
+        sendApiError(
+          res,
+          500,
+          API_ERROR_CODES.internalError,
+          "Failed to list organization members.",
+          false,
+        );
+      }
+    },
+  );
+
+  app.use("/api/workspace/members", (req, res) => {
     res.set("Allow", "GET");
     sendApiError(
       res,
