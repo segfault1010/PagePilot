@@ -2,6 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
   "buildCommand": "pnpm --filter @pagepilot/web build",
+  "devCommand": "pnpm --filter @pagepilot/web dev --port $PORT",
   "outputDirectory": "apps/web/dist",
   "rewrites": [
     {
