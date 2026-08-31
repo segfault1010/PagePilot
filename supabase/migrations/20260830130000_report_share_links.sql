@@ -40,6 +40,22 @@ CREATE INDEX IF NOT EXISTS idx_report_share_links_project
 CREATE INDEX IF NOT EXISTS idx_report_share_links_page
   ON public.report_share_links(monitored_page_id);
 
+-- Helper function for array-based role check
+CREATE OR REPLACE FUNCTION public.has_org_role(_org_id UUID, _roles TEXT[])
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, auth, pg_temp
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.memberships
+    WHERE organization_id = _org_id
+      AND user_id = auth.uid()
+      AND role = ANY(_roles)
+  );
+$$;
+
 -- Enable and Force RLS on report_share_links
 ALTER TABLE public.report_share_links ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.report_share_links FORCE ROW LEVEL SECURITY;

@@ -10,10 +10,10 @@ This roadmap defines the evolution of PagePilot from a single-project MVP into a
 |---|---|---|---|
 | **0. Product Foundation** | Maintainable monorepo base | **Complete** | pnpm workspace, shared contracts package, isolated audit engine, apps/web, apps/api, docs ledger |
 | **1. Core Audit MVP** | Trustworthy one-off UX audit | **Complete** | Safe fetch, deterministic checks, Gemini structured audit, report UI |
-| **2. Accounts & Projects** | Saved reports & tenant workspaces | **Complete** | Supabase Auth, organizations, roles, projects, monitored page registry |
-| **3. Continuous Monitoring** | Automated regression alerts | **Active** | Inngest weekly workflows, score diffing, email alerts, trend dashboard |
-| **4. Collaboration** | Findings turned into team work | **Planned** | Finding work items (`open`, `resolved`), assignees, notes, read-only share links |
-| **5. Integrations & Measurement** | Growth toolchain connectivity | **Planned** | Slack notifications, webhooks, UTM tracking, analytics context import |
+| **2. Accounts & Projects** | Saved reports & tenant workspaces | **Complete** | Supabase Auth, organizations, roles, projects, monitored page registry (Live Verified) |
+| **3. Continuous Monitoring** | Automated regression alerts | **Complete** | Inngest weekly workflows, score diffing, email alerts, trend dashboard (Live DB Verified) |
+| **4. Collaboration** | Findings turned into team work | **Complete** | Finding work items (`open`, `resolved`), assignees, notes, read-only share links (Live DB Verified) |
+| **5. Integrations & Measurement** | Growth toolchain connectivity | **Active** | Slack notifications, webhooks, UTM tracking, analytics context import |
 | **6. Deep Analysis Pipeline** | Browser-rendered evidence | **Planned** | Playwright screenshots, vision-assisted hierarchy, Lighthouse, axe checks |
 | **7. Commercial & Enterprise** | Monetization & governance | **Planned** | Stripe subscriptions, usage limits, audit logs, workspace export/deletion |
 
@@ -60,7 +60,7 @@ This roadmap defines the evolution of PagePilot from a single-project MVP into a
 ---
 
 ### Milestone 2: Accounts & Projects
-- **Status:** `Implementation Complete (Runtime RLS Pending Staging)`
+- **Status:** `Complete & Verified on Live Supabase (qzlffxlmrhqfjeohsnkm)`
 - **Product Outcome:** Signed-in growth teams can organize audits into projects, track monitored pages, and retain immutable audit history.
 - **Dependencies:** Milestone 0, Milestone 1.
 - **Tasks:**
@@ -194,7 +194,7 @@ This roadmap defines the evolution of PagePilot from a single-project MVP into a
 ---
 
 ### Milestone 4: Collaboration & Prioritization
-- **Status:** `Complete & Verified` (Tasks 4.1, 4.2, 4.3, & 4.4 Complete & Verified; runtime RLS pending staging)
+- **Status:** `Complete & Verified on Live Supabase (qzlffxlmrhqfjeohsnkm)` (Tasks 4.1, 4.2, 4.3, & 4.4 Complete & Verified)
 - **Product Outcome:** Audit findings become a prioritized work queue that teams can assign, discuss, and track to resolution, with deterministic project prioritization, rich historical report comparison, and secure external sharing.
 - **Dependencies:** Milestone 2, Milestone 3.
 - **Tasks:**

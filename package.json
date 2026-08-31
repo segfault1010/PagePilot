@@ -9,7 +9,8 @@
     "build": "pnpm --filter @pagepilot/web build",
     "test": "vitest run --pool=forks --no-file-parallelism",
     "typecheck": "tsc -b",
-    "verify:gemini": "node scripts/verify-gemini.mjs"
+    "verify:gemini": "node scripts/verify-gemini.mjs",
+    "verify:supabase": "node scripts/verify-supabase-auth-runtime.mjs"
   },
   "dependencies": {
     "@pagepilot/api": "workspace:*",

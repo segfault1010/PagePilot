@@ -6,23 +6,25 @@ interface BrowserEnv {
   VITE_SUPABASE_ANON_KEY?: string;
 }
 
-const env: BrowserEnv = (import.meta as unknown as { env: BrowserEnv }).env || {};
-const supabaseUrl = env.VITE_SUPABASE_URL;
-const supabaseAnonKey = env.VITE_SUPABASE_ANON_KEY;
+function getEnv(): BrowserEnv {
+  return ((import.meta as unknown as { env?: BrowserEnv })?.env ?? {}) as BrowserEnv;
+}
 
 export function isSupabaseConfigured(): boolean {
-  return Boolean(supabaseUrl && supabaseAnonKey);
+  const env = getEnv();
+  return Boolean(env.VITE_SUPABASE_URL && env.VITE_SUPABASE_ANON_KEY);
 }
 
 let _client: SupabaseClient | null = null;
 
 export function getSupabaseClient(): SupabaseClient | null {
-  if (!isSupabaseConfigured()) {
+  const env = getEnv();
+  if (!env.VITE_SUPABASE_URL || !env.VITE_SUPABASE_ANON_KEY) {
     return null;
   }
 
   if (!_client) {
-    _client = createClient(supabaseUrl!, supabaseAnonKey!, {
+    _client = createClient(env.VITE_SUPABASE_URL, env.VITE_SUPABASE_ANON_KEY, {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
@@ -32,4 +34,8 @@ export function getSupabaseClient(): SupabaseClient | null {
   }
 
   return _client;
+}
+
+export function resetSupabaseClient(): void {
+  _client = null;
 }

@@ -485,3 +485,29 @@ To turn audit findings and monitoring streams into an actionable, explainable pr
   - Viewer role has read-only access to diffs and comparison views; `+ Track Work Item` buttons and page mutation controls are hidden.
   - Cross-tenant requests return safe `404 NOT_FOUND`.
 
+## D58 — Dedicated PagePilot Supabase Project Provisioning, Migration Application, and Live Auth/RLS Runtime Verification
+
+To establish a dedicated, secure multi-tenant database environment for PagePilot prior to Milestone 5:
+- **Dedicated Project Ref (`qzlffxlmrhqfjeohsnkm`)**:
+  - Provisioned and wired exclusively for PagePilot with zero dependency on external or shared databases.
+  - Public credentials (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`) and server-side secret (`SUPABASE_SERVICE_ROLE_KEY`) configured in `.env`.
+- **Sequential Migration Application**:
+  - Applied all 6 multi-tenant migrations in chronological order:
+    1. `20260827120000_init_multi_tenant_schema.sql` (profiles, orgs, memberships, projects, pages, runs, reports, snapshots, findings, recommendations, RLS).
+    2. `20260827130000_monitored_page_uniqueness.sql` (`uq_monitored_pages_project_url`).
+    3. `20260827140000_audit_persistence_and_idempotency.sql` (`persist_completed_audit_report` RPC).
+    4. `20260829120000_alerts_and_delivery.sql` (alerts, alert_deliveries).
+    5. `20260830120000_work_items_and_collaboration.sql` (work_items, work_item_activities, `create_work_item_atomic`, `update_work_item_atomic` RPCs).
+    6. `20260830130000_report_share_links.sql` (report_share_links, `has_org_role` helper, `get_shared_audit_report` RPC).
+  - All 15 tables operational with Row-Level Security (RLS) enabled and forced.
+- **End-to-End Runtime Auth & Tenant Isolation Verification**:
+  - Verified user sign up, password authentication, and invalid password error rejection via Supabase Auth.
+  - Verified automatic profile creation via Postgres trigger `handle_new_user` on `auth.users`.
+  - Verified server-side JWT verification and idempotent first-user workspace auto-provisioning with owner role assignment (`GET /api/workspace/me`).
+  - Verified authenticated project & monitored page CRUD with partial uniqueness constraint enforcement (`409 CONFLICT` on duplicate canonical URLs).
+  - Verified strict role-based access control: `viewer` role can read projects (`200 OK`) but is blocked from mutating projects or pages (`403 FORBIDDEN`).
+  - Verified cross-tenant isolation and anti-spoofing: foreign tenant users cannot access or view another organization's resources (`404 NOT_FOUND`), and client-supplied `x-organization-id` or `x-user-id` headers cannot bypass server-verified JWT identities.
+  - Verified clean sign out and test user cleanup via privileged administrative endpoints.
+- **Security & Non-Disruption**:
+  - `SUPABASE_SERVICE_ROLE_KEY`, `GEMINI_API_KEY`, and `INNGEST_SIGNING_KEY` confirmed 100% absent from client bundle (`apps/web/dist`).
+  - Anonymous MVP audits (`POST /api/analyze`) remain open and functional without requiring authentication (`pnpm run verify:gemini` PASS).
