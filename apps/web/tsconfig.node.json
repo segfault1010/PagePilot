@@ -10,7 +10,7 @@
     "verbatimModuleSyntax": true,
     "esModuleInterop": true,
     "noEmit": true,
-    "types": ["node"],
+    "types": ["node", "vite/client"],
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
@@ -19,5 +19,6 @@
     "erasableSyntaxOnly": true,
     "skipLibCheck": true
   },
-  "include": ["tests", "vite.config.ts"]
+  "include": ["src/vite-env.d.ts", "tests", "vite.config.ts"]
 }
+

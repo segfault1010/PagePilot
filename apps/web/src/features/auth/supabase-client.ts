@@ -1,30 +1,31 @@
 import { createClient } from "@supabase/supabase-js";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-interface BrowserEnv {
-  VITE_SUPABASE_URL?: string;
-  VITE_SUPABASE_ANON_KEY?: string;
+function getSupabaseUrl(): string | undefined {
+  return import.meta.env?.VITE_SUPABASE_URL;
 }
 
-function getEnv(): BrowserEnv {
-  return ((import.meta as unknown as { env?: BrowserEnv })?.env ?? {}) as BrowserEnv;
+function getSupabaseAnonKey(): string | undefined {
+  return import.meta.env?.VITE_SUPABASE_ANON_KEY;
 }
 
 export function isSupabaseConfigured(): boolean {
-  const env = getEnv();
-  return Boolean(env.VITE_SUPABASE_URL && env.VITE_SUPABASE_ANON_KEY);
+  const url = getSupabaseUrl();
+  const anonKey = getSupabaseAnonKey();
+  return Boolean(url && anonKey);
 }
 
 let _client: SupabaseClient | null = null;
 
 export function getSupabaseClient(): SupabaseClient | null {
-  const env = getEnv();
-  if (!env.VITE_SUPABASE_URL || !env.VITE_SUPABASE_ANON_KEY) {
+  const url = getSupabaseUrl();
+  const anonKey = getSupabaseAnonKey();
+  if (!url || !anonKey) {
     return null;
   }
 
   if (!_client) {
-    _client = createClient(env.VITE_SUPABASE_URL, env.VITE_SUPABASE_ANON_KEY, {
+    _client = createClient(url, anonKey, {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
@@ -39,3 +40,4 @@ export function getSupabaseClient(): SupabaseClient | null {
 export function resetSupabaseClient(): void {
   _client = null;
 }
+

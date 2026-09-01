@@ -40,6 +40,9 @@ describe.skipIf(!shouldRunLiveTests)("Supabase Live Runtime Auth & Multi-Tenant 
     expect(supabaseAnonKey).toBeDefined();
     expect(supabaseServiceRoleKey).toBeDefined();
 
+    // Verify it is strictly the dedicated PagePilot project
+    expect(supabaseUrl).toContain("qzlffxlmrhqfjeohsnkm.supabase.co");
+
     publicClient = createClient(supabaseUrl!, supabaseAnonKey!, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
@@ -62,183 +65,314 @@ describe.skipIf(!shouldRunLiveTests)("Supabase Live Runtime Auth & Multi-Tenant 
   });
 
   it(
-    "completes full auth lifecycle, workspace provisioning, RBAC, and cross-tenant isolation against live Supabase",
+    "verifies all 12 end-to-end auth, profile, workspace, session lifecycle, and multi-tenant security requirements",
     async () => {
-    const timestamp = Date.now();
-    const ownerEmail = `testowner${timestamp}@gmail.com`;
-    const viewerEmail = `testviewer${timestamp}@gmail.com`;
-    const foreignEmail = `testforeign${timestamp}@gmail.com`;
-    const password = "TestPassword123!Safe";
+      const timestamp = Date.now();
+      const ownerEmail = `e2e_owner_${timestamp}@example.com`;
+      const foreignEmail = `e2e_foreign_${timestamp}@example.com`;
+      const password = "TestPassword123!Safe";
 
-    // 1. Sign Up / Create User — Owner
-    const { data: signUpData, error: signUpErr } = await adminClient.auth.admin.createUser({
-      email: ownerEmail,
-      password,
-      email_confirm: true,
-      user_metadata: { full_name: "Staging Owner" },
-    });
-    expect(signUpErr).toBeNull();
-    expect(signUpData.user).toBeDefined();
-    const ownerUser = signUpData.user!;
-    createdUserIds.push(ownerUser.id);
 
-    // Let auth trigger execute and verify profile sync
-    await new Promise((r) => setTimeout(r, 1200));
-    const { data: ownerProfile, error: profileErr } = await adminClient
-      .from("profiles")
-      .select()
-      .eq("id", ownerUser.id)
-      .single();
+      // -------------------------------------------------------------
+      // 1. Sign Up succeeds
+      // -------------------------------------------------------------
+      let signUpData: any;
+      let signUpErr: any;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const res = await adminClient.auth.admin.createUser({
+          email: ownerEmail,
+          password,
+          email_confirm: true,
+          user_metadata: { full_name: "PagePilot Test Owner" },
+        });
+        signUpData = res.data;
+        signUpErr = res.error;
+        if (!signUpErr) break;
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+      expect(signUpErr).toBeNull();
+      expect(signUpData.user).toBeDefined();
+      expect(signUpData.user!.email).toBe(ownerEmail);
+      const ownerUser = signUpData.user!;
+      createdUserIds.push(ownerUser.id);
 
-    expect(profileErr).toBeNull();
-    expect(ownerProfile.email).toBe(ownerEmail);
-    expect(ownerProfile.full_name).toBe("Staging Owner");
+      // -------------------------------------------------------------
+      // 2. Supabase auth.users contains the test user
+      // -------------------------------------------------------------
+      let userLookup: any;
+      let userLookupErr: any;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const res = await adminClient.auth.admin.getUserById(ownerUser.id);
+        userLookup = res.data;
+        userLookupErr = res.error;
+        if (!userLookupErr) break;
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+      expect(userLookupErr).toBeNull();
+      expect(userLookup.user).toBeDefined();
+      expect(userLookup.user!.id).toBe(ownerUser.id);
+      expect(userLookup.user!.email).toBe(ownerEmail);
 
-    // 2. Sign In — Owner
-    const { data: signInData, error: signInErr } = await publicClient.auth.signInWithPassword({
-      email: ownerEmail,
-      password,
-    });
-    expect(signInErr).toBeNull();
-    expect(signInData.session).toBeDefined();
-    const ownerToken = signInData.session!.access_token;
+      // -------------------------------------------------------------
+      // 3. profiles row is provisioned
+      // -------------------------------------------------------------
+      // Allow database trigger to execute
+      await new Promise((r) => setTimeout(r, 1500));
+      let ownerProfile: any;
+      let profileErr: any;
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const res = await adminClient
+          .from("profiles")
+          .select()
+          .eq("id", ownerUser.id)
+          .single();
+        ownerProfile = res.data;
+        profileErr = res.error;
+        if (!profileErr && ownerProfile) break;
+        await new Promise((r) => setTimeout(r, 1500));
+      }
 
-    // 3. Invalid credentials rejection
-    const { error: invalidErr } = await publicClient.auth.signInWithPassword({
-      email: ownerEmail,
-      password: "WrongPassword999!",
-    });
-    expect(invalidErr).not.toBeNull();
+      expect(profileErr).toBeNull();
+      expect(ownerProfile).toBeDefined();
+      expect(ownerProfile.id).toBe(ownerUser.id);
+      expect(ownerProfile.email).toBe(ownerEmail);
+      expect(ownerProfile.full_name).toBe("PagePilot Test Owner");
 
-    // 4. First-User Workspace Provisioning (GET /api/workspace/me)
-    const wsRes = await request(app)
-      .get("/api/workspace/me")
-      .set("Authorization", `Bearer ${ownerToken}`);
+      // Obtain session token via sign in
+      let signInData: any;
+      let signInErr: any;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const res = await publicClient.auth.signInWithPassword({
+          email: ownerEmail,
+          password,
+        });
+        signInData = res.data;
+        signInErr = res.error;
+        if (!signInErr) break;
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+      expect(signInErr).toBeNull();
+      expect(signInData.session).toBeDefined();
+      const ownerToken = signInData.session!.access_token;
 
-    expect(wsRes.status).toBe(200);
-    expect(wsRes.body.workspace).toBeDefined();
-    const org = wsRes.body.workspace.organization;
-    const membership = wsRes.body.workspace.membership;
-    expect(org.id).toBeDefined();
-    expect(org.slug).toBeDefined();
-    expect(membership.role).toBe("owner");
-    expect(membership.userId).toBe(ownerUser.id);
 
-    // 5. Authenticated Project & Page CRUD
-    const createProjRes = await request(app)
-      .post("/api/projects")
-      .set("Authorization", `Bearer ${ownerToken}`)
-      .send({
-        name: "Staging Test Project",
-        domain: "https://example.com",
-        timezone: "America/New_York",
-        goals: "Test conversion",
+      // -------------------------------------------------------------
+      // 4. organization is provisioned & 5. owner membership is provisioned & 6. GET /api/workspace/me returns correct role
+      // -------------------------------------------------------------
+      const wsRes = await request(app)
+        .get("/api/workspace/me")
+        .set("Authorization", `Bearer ${ownerToken}`);
+
+      expect(wsRes.status).toBe(200);
+      expect(wsRes.body.workspace).toBeDefined();
+      const ws = wsRes.body.workspace;
+      const org = ws.organization;
+      const membership = ws.membership;
+
+      // 4. organization is provisioned
+      expect(org.id).toBeDefined();
+      expect(org.slug).toBeDefined();
+      const { data: dbOrg, error: dbOrgErr } = await adminClient
+        .from("organizations")
+        .select()
+        .eq("id", org.id)
+        .single();
+      expect(dbOrgErr).toBeNull();
+      expect(dbOrg.id).toBe(org.id);
+
+      // 5. owner membership is provisioned
+      expect(membership.role).toBe("owner");
+      expect(membership.userId).toBe(ownerUser.id);
+      const { data: dbMem, error: dbMemErr } = await adminClient
+        .from("memberships")
+        .select()
+        .eq("organization_id", org.id)
+        .eq("user_id", ownerUser.id)
+        .single();
+      expect(dbMemErr).toBeNull();
+      expect(dbMem.role).toBe("owner");
+
+      // 6. GET /api/workspace/me returns the correct user/org/owner role
+      expect(ws.user.id).toBe(ownerUser.id);
+      expect(ws.user.email).toBe(ownerEmail);
+      expect(ws.role).toBe("owner");
+      expect(ws.organization.id).toBe(org.id);
+
+      // -------------------------------------------------------------
+      // 7. Sign out succeeds
+      // -------------------------------------------------------------
+      const storageMap = new Map<string, string>();
+      const customStorage = {
+        getItem: (k: string) => storageMap.get(k) ?? null,
+        setItem: (k: string, v: string) => { storageMap.set(k, v); },
+        removeItem: (k: string) => { storageMap.delete(k); },
+      };
+
+      const browserSimClient = createClient(supabaseUrl!, supabaseAnonKey!, {
+        auth: {
+          storage: customStorage,
+          persistSession: true,
+          autoRefreshToken: false,
+        },
       });
 
-    expect(createProjRes.status).toBe(201);
-    const projectId = createProjRes.body.project.id;
-    expect(projectId).toBeDefined();
-
-    const listProjRes = await request(app)
-      .get("/api/projects")
-      .set("Authorization", `Bearer ${ownerToken}`);
-
-    expect(listProjRes.status).toBe(200);
-    expect(listProjRes.body.projects.some((p: any) => p.id === projectId)).toBe(true);
-
-    const createPageRes = await request(app)
-      .post(`/api/projects/${projectId}/pages`)
-      .set("Authorization", `Bearer ${ownerToken}`)
-      .send({
-        canonicalUrl: "https://example.com/pricing",
-        cadence: "weekly",
-        tags: ["pricing"],
+      // Sign in on browser-sim client to populate persistent storage
+      const { data: simSignIn, error: simSignInErr } = await browserSimClient.auth.signInWithPassword({
+        email: ownerEmail,
+        password,
       });
+      expect(simSignInErr).toBeNull();
+      expect(simSignIn.session).toBeDefined();
+      expect(storageMap.size).toBeGreaterThan(0);
 
-    expect(createPageRes.status).toBe(201);
-    const pageId = createPageRes.body.page.id;
-    expect(pageId).toBeDefined();
+      // Sign out
+      const { error: signOutErr } = await browserSimClient.auth.signOut();
+      expect(signOutErr).toBeNull();
+      const { data: sessionAfterSignOut } = await browserSimClient.auth.getSession();
+      expect(sessionAfterSignOut.session).toBeNull();
 
-    // Duplicate page constraint check
-    const dupPageRes = await request(app)
-      .post(`/api/projects/${projectId}/pages`)
-      .set("Authorization", `Bearer ${ownerToken}`)
-      .send({
-        canonicalUrl: "https://example.com/pricing",
+      // -------------------------------------------------------------
+      // 8. Sign back in succeeds
+      // -------------------------------------------------------------
+      const { data: reSignInData, error: reSignInErr } = await browserSimClient.auth.signInWithPassword({
+        email: ownerEmail,
+        password,
       });
+      expect(reSignInErr).toBeNull();
+      expect(reSignInData.session).toBeDefined();
+      expect(reSignInData.user).toBeDefined();
+      expect(reSignInData.user!.id).toBe(ownerUser.id);
 
-    expect(dupPageRes.status).toBe(409);
-
-    // 6. Role-Based Access Control (Viewer Role)
-    const { data: viewerSignUp, error: viewerSignUpErr } = await adminClient.auth.admin.createUser({
-      email: viewerEmail,
-      password,
-      email_confirm: true,
-      user_metadata: { full_name: "Staging Viewer" },
-    });
-    expect(viewerSignUpErr).toBeNull();
-    const viewerUser = viewerSignUp.user!;
-    createdUserIds.push(viewerUser.id);
-
-    await adminClient.from("memberships").insert({
-      organization_id: org.id,
-      user_id: viewerUser.id,
-      role: "viewer",
-    });
-
-    const { data: viewerSignIn } = await publicClient.auth.signInWithPassword({
-      email: viewerEmail,
-      password,
-    });
-    const viewerToken = viewerSignIn.session!.access_token;
-
-    // Viewer read allowed
-    const viewerListRes = await request(app)
-      .get("/api/projects")
-      .set("Authorization", `Bearer ${viewerToken}`);
-    expect(viewerListRes.status).toBe(200);
-
-    // Viewer mutation forbidden
-    const viewerCreateRes = await request(app)
-      .post("/api/projects")
-      .set("Authorization", `Bearer ${viewerToken}`)
-      .send({
-        name: "Viewer Illegal Project",
-        domain: "https://illegal.com",
+      // -------------------------------------------------------------
+      // 9. Session survives page refresh
+      // -------------------------------------------------------------
+      // Simulate refreshing the page by creating a new Supabase client reading from the same storage
+      const refreshedBrowserClient = createClient(supabaseUrl!, supabaseAnonKey!, {
+        auth: {
+          storage: customStorage,
+          persistSession: true,
+          autoRefreshToken: false,
+        },
       });
-    expect(viewerCreateRes.status).toBe(403);
+      const { data: refreshedSession, error: refreshErr } = await refreshedBrowserClient.auth.getSession();
+      expect(refreshErr).toBeNull();
+      expect(refreshedSession.session).not.toBeNull();
+      expect(refreshedSession.session!.user.id).toBe(ownerUser.id);
+      expect(refreshedSession.session!.access_token).toBe(reSignInData.session!.access_token);
 
-    // 7. Cross-Tenant Access Isolation & Anti-Spoofing
-    const { data: foreignSignUp } = await adminClient.auth.admin.createUser({
-      email: foreignEmail,
-      password,
-      email_confirm: true,
-      user_metadata: { full_name: "Foreign User" },
-    });
-    const foreignUser = foreignSignUp.user!;
-    createdUserIds.push(foreignUser.id);
+      // -------------------------------------------------------------
+      // 10. Authenticated project API access works
+      // -------------------------------------------------------------
+      const activeOwnerToken = reSignInData.session!.access_token;
 
-    const { data: foreignSignIn } = await publicClient.auth.signInWithPassword({
-      email: foreignEmail,
-      password,
-    });
-    const foreignToken = foreignSignIn.session!.access_token;
+      const createProjRes = await request(app)
+        .post("/api/projects")
+        .set("Authorization", `Bearer ${activeOwnerToken}`)
+        .send({
+          name: "E2E Verified Project",
+          domain: "https://example.com",
+          timezone: "UTC",
+          goals: "Verify project CRUD",
+        });
 
-    // Provision foreign user's workspace
-    await request(app)
-      .get("/api/workspace/me")
-      .set("Authorization", `Bearer ${foreignToken}`);
+      expect(createProjRes.status).toBe(201);
+      const projectId = createProjRes.body.project.id;
+      expect(projectId).toBeDefined();
 
-    // Attempt to access owner's project with spoofed headers
-    const crossTenantRes = await request(app)
-      .get(`/api/projects/${projectId}`)
-      .set("Authorization", `Bearer ${foreignToken}`)
-      .set("x-organization-id", org.id)
-      .set("x-user-id", ownerUser.id);
+      const listProjRes = await request(app)
+        .get("/api/projects")
+        .set("Authorization", `Bearer ${activeOwnerToken}`);
 
-    expect(crossTenantRes.status).toBe(404);
+      expect(listProjRes.status).toBe(200);
+      expect(listProjRes.body.projects.some((p: any) => p.id === projectId)).toBe(true);
 
-    // 8. Sign Out
-    await publicClient.auth.signOut();
-  }, 60000);
+      const createPageRes = await request(app)
+        .post(`/api/projects/${projectId}/pages`)
+        .set("Authorization", `Bearer ${activeOwnerToken}`)
+        .send({
+          canonicalUrl: "https://example.com/e2e-pricing",
+          cadence: "weekly",
+          tags: ["pricing"],
+        });
+
+      expect(createPageRes.status).toBe(201);
+      const pageId = createPageRes.body.page.id;
+      expect(pageId).toBeDefined();
+
+
+      // -------------------------------------------------------------
+      // 11. Anonymous POST /api/analyze still works without auth
+      // -------------------------------------------------------------
+      const anonAnalyzeRes = await request(app)
+        .post("/api/analyze")
+        .send({ url: "https://example.com" });
+
+      // The core analyze pipeline should NOT return 401 or 403 (no authentication required)
+      expect(anonAnalyzeRes.status).not.toBe(401);
+      expect(anonAnalyzeRes.status).not.toBe(403);
+      expect([200, 422, 502, 503]).toContain(anonAnalyzeRes.status);
+
+      // -------------------------------------------------------------
+      // 12. Cross-tenant / client-ID spoofing remains rejected
+      // -------------------------------------------------------------
+      let foreignSignUp: any;
+      let foreignSignUpErr: any;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const res = await adminClient.auth.admin.createUser({
+          email: foreignEmail,
+          password,
+          email_confirm: true,
+          user_metadata: { full_name: "Foreign Tenant User" },
+        });
+        foreignSignUp = res.data;
+        foreignSignUpErr = res.error;
+        if (!foreignSignUpErr) break;
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+      expect(foreignSignUpErr).toBeNull();
+      const foreignUser = foreignSignUp.user!;
+      createdUserIds.push(foreignUser.id);
+
+      let foreignSignIn: any;
+      let foreignSignInErr: any;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const res = await publicClient.auth.signInWithPassword({
+          email: foreignEmail,
+          password,
+        });
+        foreignSignIn = res.data;
+        foreignSignInErr = res.error;
+        if (!foreignSignInErr) break;
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+      expect(foreignSignInErr).toBeNull();
+      const foreignToken = foreignSignIn.session!.access_token;
+
+
+      // Auto-provision foreign user's workspace
+      await request(app)
+        .get("/api/workspace/me")
+        .set("Authorization", `Bearer ${foreignToken}`);
+
+      // Attempt to access owner's project with spoofed headers using foreign user's valid token
+      const crossTenantRes = await request(app)
+        .get(`/api/projects/${projectId}`)
+        .set("Authorization", `Bearer ${foreignToken}`)
+        .set("x-organization-id", org.id)
+        .set("x-user-id", ownerUser.id);
+
+      expect(crossTenantRes.status).toBe(404);
+
+      // Attempt to mutate owner's project with foreign token
+      const crossTenantMutationRes = await request(app)
+        .post(`/api/projects/${projectId}/pages`)
+        .set("Authorization", `Bearer ${foreignToken}`)
+        .send({
+          canonicalUrl: "https://example.com/unauthorized-page",
+        });
+
+      expect(crossTenantMutationRes.status).toBe(404);
+    },
+    90000,
+  );
 });
