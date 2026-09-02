@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   createMonitoredPageSchema,
   createProjectSchema,
+  createShareLinkResponseSchema,
+  isoDateTimeSchema,
   normalizeDomain,
+  projectListResponseSchema,
+  projectSchema,
+  reportShareLinkSchema,
   updateMonitoredPageSchema,
   updateProjectSchema,
 } from "../src/database-types.js";
@@ -198,6 +203,88 @@ describe("Project & Monitored Page Contracts", () => {
           ownerId: "invalid-user-id",
         }),
       ).toThrow("Invalid owner user ID.");
+    });
+  });
+
+  describe("Supabase timestamptz (+00:00) ISO-8601 regression suite", () => {
+    const validUuid = "8b956a42-fd0c-4cf6-ac66-3da3b07535cb";
+    const supabaseOffsetTimestamp = "2026-09-02T02:29:39.29552+00:00";
+    const negativeOffsetTimestamp = "2026-09-02T02:29:39.295-05:00";
+    const standardUtcTimestamp = "2026-09-02T02:29:39.295Z";
+
+    it("accepts valid ISO datetime strings with +00:00 offset in isoDateTimeSchema", () => {
+      expect(isoDateTimeSchema.parse(supabaseOffsetTimestamp)).toBe(supabaseOffsetTimestamp);
+      expect(isoDateTimeSchema.parse(negativeOffsetTimestamp)).toBe(negativeOffsetTimestamp);
+      expect(isoDateTimeSchema.parse(standardUtcTimestamp)).toBe(standardUtcTimestamp);
+    });
+
+    it("rejects invalid non-ISO datetime strings in isoDateTimeSchema", () => {
+      expect(() => isoDateTimeSchema.parse("invalid-date")).toThrow();
+      expect(() => isoDateTimeSchema.parse("")).toThrow();
+      expect(() => isoDateTimeSchema.parse("2026-02-31T00:00:00Z")).toThrow();
+    });
+
+    it("accepts real Supabase timestamptz with +00:00 in projectSchema and projectListResponseSchema", () => {
+      const projectWithOffset = {
+        id: validUuid,
+        organizationId: validUuid,
+        name: "Direct Test Project",
+        domain: "example.com",
+        timezone: "UTC",
+        goals: null,
+        createdBy: validUuid,
+        createdAt: supabaseOffsetTimestamp,
+        updatedAt: supabaseOffsetTimestamp,
+      };
+
+      const parsedProject = projectSchema.parse(projectWithOffset);
+      expect(parsedProject.createdAt).toBe(supabaseOffsetTimestamp);
+      expect(parsedProject.updatedAt).toBe(supabaseOffsetTimestamp);
+
+      const listResponse = {
+        projects: [projectWithOffset],
+        total: 1,
+      };
+      const parsedList = projectListResponseSchema.parse(listResponse);
+      expect(parsedList.projects).toHaveLength(1);
+      expect(parsedList.total).toBe(1);
+      expect(parsedList.projects[0].createdAt).toBe(supabaseOffsetTimestamp);
+    });
+
+    it("accepts real Supabase timestamptz with +00:00 in reportShareLinkSchema", () => {
+      const shareLinkWithOffset = {
+        id: validUuid,
+        organizationId: validUuid,
+        projectId: validUuid,
+        monitoredPageId: validUuid,
+        auditRunId: validUuid,
+        auditReportId: validUuid,
+        tokenHash: "abc123hash",
+        createdByUserId: validUuid,
+        expiresAt: "2026-10-02T02:29:39.29552+00:00",
+        revokedAt: null,
+        createdAt: supabaseOffsetTimestamp,
+        lastAccessedAt: null,
+      };
+
+      const parsedShareLink = reportShareLinkSchema.parse(shareLinkWithOffset);
+      expect(parsedShareLink.createdAt).toBe(supabaseOffsetTimestamp);
+      expect(parsedShareLink.expiresAt).toBe("2026-10-02T02:29:39.29552+00:00");
+    });
+
+    it("accepts real Supabase timestamptz with +00:00 in createShareLinkResponseSchema", () => {
+      const createResponse = {
+        shareLink: {
+          id: validUuid,
+          shareUrl: `/shared/reports/mock-token`,
+          token: "mock-token",
+          expiresAt: "2026-10-02T02:29:39.29552+00:00",
+          createdAt: supabaseOffsetTimestamp,
+        },
+      };
+
+      const parsed = createShareLinkResponseSchema.parse(createResponse);
+      expect(parsed.shareLink.createdAt).toBe(supabaseOffsetTimestamp);
     });
   });
 });

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { auditCategorySchema } from "./audit-types.js";
+import { isoDateTimeSchema } from "./database-types.js";
 
 /**
  * Version constant for the alert contract schema.
@@ -67,7 +68,7 @@ export const alertEvaluationContextSchema = z.object({
   monitoredPageId: z.string().uuid(),
   auditRunId: z.string().uuid().nullable().optional(),
   consecutiveFailureCount: z.number().int().min(0).default(0),
-  evaluatedAt: z.string().datetime(),
+  evaluatedAt: isoDateTimeSchema,
   windowId: z.string().optional(),
 });
 export type AlertEvaluationContext = z.infer<
@@ -92,7 +93,7 @@ export const alertDecisionSchema = z.object({
   previousValue: z.union([z.string(), z.number()]).nullable().optional(),
   currentValue: z.union([z.string(), z.number()]).nullable().optional(),
   deduplicationKey: z.string().min(1),
-  evaluatedAt: z.string().datetime(),
+  evaluatedAt: isoDateTimeSchema,
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 export type AlertDecision = z.infer<typeof alertDecisionSchema>;
@@ -112,7 +113,7 @@ export const alertEvaluationResultSchema = z.object({
   mediumSeverityAlertsCount: z.number().int().min(0),
   lowSeverityAlertsCount: z.number().int().min(0),
   decisions: z.array(alertDecisionSchema),
-  evaluatedAt: z.string().datetime(),
+  evaluatedAt: isoDateTimeSchema,
 });
 export type AlertEvaluationResult = z.infer<
   typeof alertEvaluationResultSchema
@@ -174,8 +175,8 @@ export const alertEntitySchema = z.object({
   schemaVersion: z.string().default(ALERT_SCHEMA_VERSION),
   status: alertStatusSchema.default("created"),
   metadata: z.record(z.string(), z.unknown()).default({}),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
+  createdAt: isoDateTimeSchema,
+  updatedAt: isoDateTimeSchema,
 });
 export type AlertEntity = z.infer<typeof alertEntitySchema>;
 
@@ -191,11 +192,11 @@ export const alertDeliveryEntitySchema = z.object({
   deliveryKey: z.string().min(1),
   status: deliveryStatusSchema.default("pending"),
   attempts: z.number().int().min(0).default(0),
-  lastAttemptedAt: z.string().datetime().nullable().optional(),
-  deliveredAt: z.string().datetime().nullable().optional(),
+  lastAttemptedAt: isoDateTimeSchema.nullable().optional(),
+  deliveredAt: isoDateTimeSchema.nullable().optional(),
   errorMessage: z.string().nullable().optional(),
   metadata: z.record(z.string(), z.unknown()).default({}),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
+  createdAt: isoDateTimeSchema,
+  updatedAt: isoDateTimeSchema,
 });
 export type AlertDeliveryEntity = z.infer<typeof alertDeliveryEntitySchema>;

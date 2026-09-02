@@ -90,10 +90,12 @@ export type CategoryReport = z.infer<typeof categoryReportSchema>;
 // Report
 // ---------------------------------------------------------------------------
 
+export const isoDateTimeSchema = z.string().datetime({ offset: true });
+
 export const reportSourceSchema = z.object({
   requestedUrl: z.string(),
   finalUrl: z.string(),
-  analyzedAt: z.iso.datetime(),
+  analyzedAt: isoDateTimeSchema,
   title: z.string().nullable(),
 });
 export type ReportSource = z.infer<typeof reportSourceSchema>;

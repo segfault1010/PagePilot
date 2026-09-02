@@ -53,6 +53,12 @@ export interface SharePersistenceStore {
   ): Promise<SharedAuditReportResponse | null>;
 }
 
+function toNormalizedIsoDate(val: any): string | null {
+  if (!val) return null;
+  const d = new Date(val);
+  return isNaN(d.getTime()) ? String(val) : d.toISOString();
+}
+
 /**
  * Supabase implementation of SharePersistenceStore.
  */
@@ -193,7 +199,38 @@ export class SupabaseSharePersistenceStore implements SharePersistenceStore {
       return null;
     }
 
-    return parsed.data;
+    return {
+      ...parsed.data,
+      report: {
+        ...parsed.data.report,
+        createdAt: toNormalizedIsoDate(parsed.data.report.createdAt)!,
+      },
+      auditRun: {
+        ...parsed.data.auditRun,
+        createdAt: toNormalizedIsoDate(parsed.data.auditRun.createdAt)!,
+        updatedAt: toNormalizedIsoDate(parsed.data.auditRun.updatedAt)!,
+        startedAt: toNormalizedIsoDate(parsed.data.auditRun.startedAt)!,
+        completedAt: toNormalizedIsoDate(parsed.data.auditRun.completedAt),
+        failedAt: toNormalizedIsoDate(parsed.data.auditRun.failedAt),
+      },
+      scoreSnapshots: parsed.data.scoreSnapshots.map((s) => ({
+        ...s,
+        createdAt: toNormalizedIsoDate(s.createdAt)!,
+      })),
+      findings: parsed.data.findings.map((f) => ({
+        ...f,
+        createdAt: toNormalizedIsoDate(f.createdAt)!,
+      })),
+      recommendations: parsed.data.recommendations.map((r) => ({
+        ...r,
+        createdAt: toNormalizedIsoDate(r.createdAt)!,
+      })),
+      shareMetadata: {
+        ...parsed.data.shareMetadata,
+        createdAt: toNormalizedIsoDate(parsed.data.shareMetadata.createdAt)!,
+        expiresAt: toNormalizedIsoDate(parsed.data.shareMetadata.expiresAt),
+      },
+    };
   }
 
   private mapShareLinkRow(row: any): ReportShareLink {
@@ -206,10 +243,10 @@ export class SupabaseSharePersistenceStore implements SharePersistenceStore {
       auditReportId: row.audit_report_id,
       tokenHash: row.token_hash,
       createdByUserId: row.created_by_user_id,
-      expiresAt: row.expires_at,
-      revokedAt: row.revoked_at,
-      createdAt: row.created_at,
-      lastAccessedAt: row.last_accessed_at,
+      expiresAt: toNormalizedIsoDate(row.expires_at),
+      revokedAt: toNormalizedIsoDate(row.revoked_at),
+      createdAt: toNormalizedIsoDate(row.created_at)!,
+      lastAccessedAt: toNormalizedIsoDate(row.last_accessed_at),
     });
   }
 }

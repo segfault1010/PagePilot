@@ -96,12 +96,18 @@ export interface WorkItemsStore {
   listOrganizationMembers(orgId: string): Promise<OrganizationMember[]>;
 }
 
+function toNormalizedIsoDate(val: any): string | null {
+  if (!val) return null;
+  const d = new Date(val);
+  return isNaN(d.getTime()) ? String(val) : d.toISOString();
+}
+
 export function mapWorkItemRow(row: any): WorkItem {
   return {
     id: row.id,
     organizationId: row.organization_id,
     projectId: row.project_id,
-    monitoredPageId: row.monitored_page_id,
+    monitoredPageId: row.monitored_page_id ?? null,
     auditRunId: row.audit_run_id ?? null,
     auditReportId: row.audit_report_id ?? null,
     sourceType: row.source_type,
@@ -116,12 +122,12 @@ export function mapWorkItemRow(row: any): WorkItem {
     notes: row.notes ?? null,
     tags: row.tags ?? [],
     resolutionRationale: row.resolution_rationale ?? null,
-    resolvedAt: row.resolved_at ?? null,
+    resolvedAt: toNormalizedIsoDate(row.resolved_at),
     resolvedByUserId: row.resolved_by_user_id ?? null,
     createdByUserId: row.created_by_user_id ?? null,
     lastModifiedByUserId: row.last_modified_by_user_id ?? null,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    createdAt: toNormalizedIsoDate(row.created_at)!,
+    updatedAt: toNormalizedIsoDate(row.updated_at)!,
   };
 }
 
@@ -136,7 +142,7 @@ export function mapWorkItemActivityRow(row: any): WorkItemActivity {
     fromStatus: row.from_status ?? null,
     toStatus: row.to_status ?? null,
     details: row.details ?? {},
-    createdAt: row.created_at,
+    createdAt: toNormalizedIsoDate(row.created_at)!,
   };
 }
 

@@ -10,7 +10,11 @@ import type {
   UpdateProjectInput,
 } from "@pagepilot/contracts";
 import { createApp } from "../src/http/app.js";
-import { DuplicateResourceError } from "../src/projects/projects-store.js";
+import {
+  DuplicateResourceError,
+  rowToMonitoredPage,
+  rowToProject,
+} from "../src/projects/projects-store.js";
 import type { ProjectsStore } from "../src/projects/projects-store.js";
 
 /**
@@ -897,6 +901,47 @@ describe("Projects & Monitored Pages API Integration", () => {
         .get(`/api/projects/${otherProject.id}/pages/${otherPage.id}`)
         .set("Authorization", "Bearer token-owner");
       expect(checkOther.status).toBe(200);
+    });
+  });
+
+  describe("Postgres timestamptz (+00:00) normalization regression tests", () => {
+    it("rowToProject normalizes +00:00 timestamps to canonical ISO-8601 strings", () => {
+      const dbRow = {
+        id: "8b956a42-fd0c-4cf6-ac66-3da3b07535cb",
+        organization_id: "7a845931-eb0b-3bf5-aa55-5aa8ad2719ba",
+        name: "Direct Test Project",
+        domain: "example.com",
+        timezone: "UTC",
+        goals: null,
+        created_by: "6a734820-da0a-2ae4-9944-49979c1608a9",
+        created_at: "2026-09-02T02:29:39.29552+00:00",
+        updated_at: "2026-09-02T02:29:39.29552+00:00",
+      };
+
+      const project = rowToProject(dbRow);
+      expect(project.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect(project.updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect(new Date(project.createdAt).getTime()).toBe(new Date(dbRow.created_at).getTime());
+    });
+
+    it("rowToMonitoredPage normalizes +00:00 timestamps to canonical ISO-8601 strings", () => {
+      const dbRow = {
+        id: "0a6f9020-5d17-4866-a94b-c7360963d7c9",
+        project_id: "8b956a42-fd0c-4cf6-ac66-3da3b07535cb",
+        organization_id: "7a845931-eb0b-3bf5-aa55-5aa8ad2719ba",
+        canonical_url: "https://example.com",
+        cadence: "weekly",
+        status: "active",
+        owner_id: null,
+        tags: [],
+        latest_audit_run_id: null,
+        created_at: "2026-09-02T02:29:39.29552+00:00",
+        updated_at: "2026-09-02T02:29:39.29552+00:00",
+      };
+
+      const page = rowToMonitoredPage(dbRow);
+      expect(page.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect(page.updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
     });
   });
 });

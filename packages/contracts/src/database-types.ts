@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   auditCategorySchema,
+  isoDateTimeSchema,
   reportSchema,
   scoreConfidenceSchema,
   severitySchema,
@@ -89,6 +90,17 @@ export const workStatusSchema = z.enum(WORK_STATUSES);
 export type WorkStatus = z.infer<typeof workStatusSchema>;
 
 // ---------------------------------------------------------------------------
+// Shared Datetime Schema
+// ---------------------------------------------------------------------------
+
+/**
+ * Shared ISO-8601 datetime schema.
+ * Accepts both canonical UTC strings (ending in 'Z') and valid ISO-8601 offset strings (e.g. '+00:00', '-05:00')
+ * as produced by PostgreSQL timestamptz columns in Supabase.
+ */
+export { isoDateTimeSchema };
+
+// ---------------------------------------------------------------------------
 // Entity Schemas
 // ---------------------------------------------------------------------------
 
@@ -97,8 +109,8 @@ export const profileSchema = z.object({
   email: z.string().email(),
   fullName: z.string().nullable().optional(),
   avatarUrl: z.string().url().nullable().optional(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
+  createdAt: isoDateTimeSchema,
+  updatedAt: isoDateTimeSchema,
 });
 export type Profile = z.infer<typeof profileSchema>;
 
@@ -107,8 +119,8 @@ export const organizationSchema = z.object({
   name: z.string().min(1),
   slug: z.string().min(1),
   createdBy: z.string().uuid().nullable().optional(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
+  createdAt: isoDateTimeSchema,
+  updatedAt: isoDateTimeSchema,
 });
 export type Organization = z.infer<typeof organizationSchema>;
 
@@ -117,8 +129,8 @@ export const membershipSchema = z.object({
   organizationId: z.string().uuid(),
   userId: z.string().uuid(),
   role: roleSchema,
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
+  createdAt: isoDateTimeSchema,
+  updatedAt: isoDateTimeSchema,
 });
 export type Membership = z.infer<typeof membershipSchema>;
 
@@ -130,8 +142,8 @@ export const organizationMemberSchema = z.object({
   email: z.string().email(),
   fullName: z.string().nullable().optional(),
   avatarUrl: z.string().url().nullable().optional(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
+  createdAt: isoDateTimeSchema,
+  updatedAt: isoDateTimeSchema,
 });
 export type OrganizationMember = z.infer<typeof organizationMemberSchema>;
 
@@ -150,8 +162,8 @@ export const projectSchema = z.object({
   timezone: z.string().default("UTC"),
   goals: z.string().nullable().optional(),
   createdBy: z.string().uuid().nullable().optional(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
+  createdAt: isoDateTimeSchema,
+  updatedAt: isoDateTimeSchema,
 });
 export type Project = z.infer<typeof projectSchema>;
 
@@ -166,8 +178,8 @@ export const monitoredPageSchema = z.object({
   tags: z.array(z.string()).default([]),
   latestAuditRunId: z.string().uuid().nullable().optional(),
   latestSuccessfulAuditRunId: z.string().uuid().nullable().optional(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
+  createdAt: isoDateTimeSchema,
+  updatedAt: isoDateTimeSchema,
 });
 export type MonitoredPage = z.infer<typeof monitoredPageSchema>;
 
@@ -182,9 +194,9 @@ export const auditRunSchema = z.object({
   finalUrl: z.string().url().nullable().optional(),
   triggeredByUserId: z.string().uuid().nullable().optional(),
   idempotencyKey: z.string().nullable().optional(),
-  startedAt: z.string().datetime().nullable().optional(),
-  completedAt: z.string().datetime().nullable().optional(),
-  failedAt: z.string().datetime().nullable().optional(),
+  startedAt: isoDateTimeSchema.nullable().optional(),
+  completedAt: isoDateTimeSchema.nullable().optional(),
+  failedAt: isoDateTimeSchema.nullable().optional(),
   errorCode: z.string().nullable().optional(),
   errorMessage: z.string().nullable().optional(),
   retryable: z.boolean().nullable().optional(),
@@ -194,8 +206,8 @@ export const auditRunSchema = z.object({
   scoringVersion: z.string().min(1),
   retryCount: z.number().int().min(0).default(0),
   maxRetries: z.number().int().min(0).default(3),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
+  createdAt: isoDateTimeSchema,
+  updatedAt: isoDateTimeSchema,
 });
 export type AuditRun = z.infer<typeof auditRunSchema>;
 
@@ -213,7 +225,7 @@ export const auditReportSchema = z.object({
   overallScore: z.number().min(0).max(100),
   scoreConfidence: scoreConfidenceSchema,
   reportPayload: reportSchema,
-  createdAt: z.string().datetime(),
+  createdAt: isoDateTimeSchema,
 });
 export type AuditReport = z.infer<typeof auditReportSchema>;
 
@@ -230,7 +242,7 @@ export const scoreSnapshotSchema = z.object({
   explanation: z.string(),
   severity: severitySchema,
   scoringVersion: z.string().min(1),
-  createdAt: z.string().datetime(),
+  createdAt: isoDateTimeSchema,
 });
 export type ScoreSnapshot = z.infer<typeof scoreSnapshotSchema>;
 
@@ -251,9 +263,9 @@ export const findingEntitySchema = z.object({
   recommendation: z.string().min(1),
   displayOrder: z.number().int().min(0).default(0),
   workStatus: workStatusSchema.default("open"),
-  resolvedAt: z.string().datetime().nullable().optional(),
+  resolvedAt: isoDateTimeSchema.nullable().optional(),
   resolvedByUserId: z.string().uuid().nullable().optional(),
-  createdAt: z.string().datetime(),
+  createdAt: isoDateTimeSchema,
 });
 export type FindingEntity = z.infer<typeof findingEntitySchema>;
 
@@ -269,7 +281,7 @@ export const recommendationEntitySchema = z.object({
   title: z.string().min(1),
   detail: z.string().min(1),
   displayOrder: z.number().int().min(0).default(0),
-  createdAt: z.string().datetime(),
+  createdAt: isoDateTimeSchema,
 });
 export type RecommendationEntity = z.infer<typeof recommendationEntitySchema>;
 
@@ -560,12 +572,12 @@ export const workItemSchema = z.object({
   notes: z.string().nullable().optional(),
   tags: z.array(z.string()).default([]),
   resolutionRationale: z.string().nullable().optional(),
-  resolvedAt: z.string().datetime().nullable().optional(),
+  resolvedAt: isoDateTimeSchema.nullable().optional(),
   resolvedByUserId: z.string().uuid().nullable().optional(),
   createdByUserId: z.string().uuid().nullable().optional(),
   lastModifiedByUserId: z.string().uuid().nullable().optional(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
+  createdAt: isoDateTimeSchema,
+  updatedAt: isoDateTimeSchema,
 });
 export type WorkItem = z.infer<typeof workItemSchema>;
 
@@ -579,7 +591,7 @@ export const workItemActivitySchema = z.object({
   fromStatus: workItemStatusSchema.nullable().optional(),
   toStatus: workItemStatusSchema.nullable().optional(),
   details: z.record(z.string(), z.any()).default({}),
-  createdAt: z.string().datetime(),
+  createdAt: isoDateTimeSchema,
 });
 export type WorkItemActivity = z.infer<typeof workItemActivitySchema>;
 
@@ -697,10 +709,10 @@ export const reportShareLinkSchema = z.object({
   auditReportId: z.string().uuid(),
   tokenHash: z.string().min(1),
   createdByUserId: z.string().uuid().nullable().optional(),
-  expiresAt: z.string().datetime().nullable().optional(),
-  revokedAt: z.string().datetime().nullable().optional(),
-  createdAt: z.string().datetime(),
-  lastAccessedAt: z.string().datetime().nullable().optional(),
+  expiresAt: isoDateTimeSchema.nullable().optional(),
+  revokedAt: isoDateTimeSchema.nullable().optional(),
+  createdAt: isoDateTimeSchema,
+  lastAccessedAt: isoDateTimeSchema.nullable().optional(),
 });
 export type ReportShareLink = z.infer<typeof reportShareLinkSchema>;
 
@@ -719,12 +731,12 @@ export const shareLinkMetadataSchema = z.object({
   id: z.string().uuid(),
   auditRunId: z.string().uuid(),
   auditReportId: z.string().uuid(),
-  expiresAt: z.string().datetime().nullable().optional(),
-  revokedAt: z.string().datetime().nullable().optional(),
+  expiresAt: isoDateTimeSchema.nullable().optional(),
+  revokedAt: isoDateTimeSchema.nullable().optional(),
   isRevoked: z.boolean().default(false),
   isExpired: z.boolean().default(false),
-  createdAt: z.string().datetime(),
-  lastAccessedAt: z.string().datetime().nullable().optional(),
+  createdAt: isoDateTimeSchema,
+  lastAccessedAt: isoDateTimeSchema.nullable().optional(),
 });
 export type ShareLinkMetadata = z.infer<typeof shareLinkMetadataSchema>;
 
@@ -733,22 +745,62 @@ export const createShareLinkResponseSchema = z.object({
     id: z.string().uuid(),
     shareUrl: z.string(),
     token: z.string().min(1),
-    expiresAt: z.string().datetime().nullable().optional(),
-    createdAt: z.string().datetime(),
+    expiresAt: isoDateTimeSchema.nullable().optional(),
+    createdAt: isoDateTimeSchema,
   }),
 });
 export type CreateShareLinkResponse = z.infer<typeof createShareLinkResponseSchema>;
 
+export const sharedScoreSnapshotSchema = z.object({
+  id: z.string().uuid(),
+  auditReportId: z.string().uuid(),
+  auditRunId: z.string().uuid().optional(),
+  monitoredPageId: z.string().uuid().optional(),
+  projectId: z.string().uuid().optional(),
+  organizationId: z.string().uuid().optional(),
+  category: auditCategorySchema,
+  score: z.number().min(0).max(100),
+  confidence: scoreConfidenceSchema,
+  explanation: z.string().optional(),
+  severity: severitySchema.optional(),
+  scoringVersion: z.string().min(1).optional(),
+  observedSignalsCount: z.number().nullable().optional(),
+  warningCount: z.number().nullable().optional(),
+  neutralCount: z.number().nullable().optional(),
+  createdAt: isoDateTimeSchema,
+});
+export type SharedScoreSnapshot = z.infer<typeof sharedScoreSnapshotSchema>;
+
+export const sharedFindingEntitySchema = z.object({
+  id: z.string().uuid(),
+  auditReportId: z.string().uuid(),
+  auditRunId: z.string().uuid().optional(),
+  monitoredPageId: z.string().uuid().optional(),
+  projectId: z.string().uuid().optional(),
+  organizationId: z.string().uuid().optional(),
+  findingType: findingTypeSchema,
+  category: auditCategorySchema,
+  title: z.string().min(1),
+  severity: severitySchema,
+  evidence: z.string(),
+  basis: z.enum(["observed", "inferred"]).optional(),
+  signalIds: z.array(z.string()).default([]),
+  recommendation: z.string(),
+  displayOrder: z.number().int().min(0).default(0),
+  createdAt: isoDateTimeSchema,
+});
+export type SharedFindingEntity = z.infer<typeof sharedFindingEntitySchema>;
+
 export const sharedAuditReportResponseSchema = z.object({
   report: auditReportSchema,
   auditRun: auditRunSchema,
-  scoreSnapshots: z.array(scoreSnapshotSchema),
-  findings: z.array(findingEntitySchema),
+  scoreSnapshots: z.array(sharedScoreSnapshotSchema),
+  findings: z.array(sharedFindingEntitySchema),
   recommendations: z.array(recommendationEntitySchema),
   shareMetadata: z.object({
     id: z.string().uuid(),
-    createdAt: z.string().datetime(),
-    expiresAt: z.string().datetime().nullable().optional(),
+    createdAt: isoDateTimeSchema,
+    expiresAt: isoDateTimeSchema.nullable().optional(),
   }),
 });
 export type SharedAuditReportResponse = z.infer<typeof sharedAuditReportResponseSchema>;

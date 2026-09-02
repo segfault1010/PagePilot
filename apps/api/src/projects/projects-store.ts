@@ -73,6 +73,12 @@ export interface ProjectsStore {
   ): Promise<boolean>;
 }
 
+function toNormalizedIsoDate(val: any): string {
+  if (!val) return val;
+  const d = new Date(val);
+  return isNaN(d.getTime()) ? String(val) : d.toISOString();
+}
+
 export function rowToProject(row: any): Project {
   return {
     id: row.id,
@@ -82,8 +88,8 @@ export function rowToProject(row: any): Project {
     timezone: row.timezone ?? "UTC",
     goals: row.goals ?? null,
     createdBy: row.created_by ?? row.createdBy ?? null,
-    createdAt: row.created_at ?? row.createdAt,
-    updatedAt: row.updated_at ?? row.updatedAt,
+    createdAt: toNormalizedIsoDate(row.created_at ?? row.createdAt),
+    updatedAt: toNormalizedIsoDate(row.updated_at ?? row.updatedAt),
   };
 }
 
@@ -98,8 +104,8 @@ export function rowToMonitoredPage(row: any): MonitoredPage {
     ownerId: row.owner_id ?? row.ownerId ?? null,
     tags: Array.isArray(row.tags) ? row.tags : [],
     latestAuditRunId: row.latest_audit_run_id ?? row.latestAuditRunId ?? null,
-    createdAt: row.created_at ?? row.createdAt,
-    updatedAt: row.updated_at ?? row.updatedAt,
+    createdAt: toNormalizedIsoDate(row.created_at ?? row.createdAt),
+    updatedAt: toNormalizedIsoDate(row.updated_at ?? row.updatedAt),
   };
 }
 

@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import request from "supertest";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type {
   AuditReport,
   AuditRun,
@@ -18,6 +18,7 @@ import { createApp } from "../src/http/app.js";
 import type { ProjectsStore } from "../src/projects/projects-store.js";
 import type { AuditPersistenceStore } from "../src/audits/audit-store.js";
 import type { SharePersistenceStore } from "../src/share/share-store.js";
+import { SupabaseSharePersistenceStore } from "../src/share/share-store.js";
 import { hashShareToken } from "../src/share/routes.js";
 
 class InMemoryProjectsStore implements ProjectsStore {
@@ -659,5 +660,204 @@ describe("Share Links API & Public Resolver", () => {
     const res3 = await request(rateLimitedApp).get(`/api/shared/reports/${rawToken}`);
     expect(res3.status).toBe(429);
     expect(res3.body.error.code).toBe("RATE_LIMITED");
+  });
+
+  describe("SupabaseSharePersistenceStore timestamptz (+00:00) regression tests", () => {
+    it("mapShareLinkRow normalizes Supabase timestamptz with +00:00 to canonical ISO-8601 without throwing", () => {
+      const mockDb: any = {};
+      const store = new SupabaseSharePersistenceStore(mockDb);
+
+      const dbRow = {
+        id: "8b956a42-fd0c-4cf6-ac66-3da3b07535cb",
+        organization_id: "7a845931-eb0b-3bf5-aa55-5aa8ad2719ba",
+        project_id: "8b956a42-fd0c-4cf6-ac66-3da3b07535cb",
+        monitored_page_id: "0a6f9020-5d17-4866-a94b-c7360963d7c9",
+        audit_run_id: "ec0759db-6a22-4d65-90f1-d12d71382e33",
+        audit_report_id: "91aff772-ba48-4fd0-a731-b6978c024afb",
+        token_hash: "hash_value_123",
+        created_by_user_id: "6a734820-da0a-2ae4-9944-49979c1608a9",
+        expires_at: "2026-10-02T02:30:10.90152+00:00",
+        revoked_at: null,
+        created_at: "2026-09-02T02:30:10.90152+00:00",
+        last_accessed_at: null,
+      };
+
+      const mapped = (store as any).mapShareLinkRow(dbRow);
+      expect(mapped.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect(mapped.expiresAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect(mapped.revokedAt).toBeNull();
+      expect(mapped.lastAccessedAt).toBeNull();
+      expect(new Date(mapped.createdAt).getTime()).toBe(new Date(dbRow.created_at).getTime());
+    });
+
+    it("resolvePublicSharedReport accepts Supabase RPC payload with +00:00 timestamps and normalizes output", async () => {
+      const mockRpcPayload = {
+        report: {
+          id: "91aff772-ba48-4fd0-a731-b6978c024afb",
+          auditRunId: "ec0759db-6a22-4d65-90f1-d12d71382e33",
+          monitoredPageId: "0a6f9020-5d17-4866-a94b-c7360963d7c9",
+          projectId: "8b956a42-fd0c-4cf6-ac66-3da3b07535cb",
+          organizationId: "7a845931-eb0b-3bf5-aa55-5aa8ad2719ba",
+          schemaVersion: "1.0.0",
+          modelIdentifier: "gemini-3.6-flash",
+          checkVersion: "1.0.0",
+          scoringVersion: "1.0.0",
+          summary: "Strong UX structure.",
+          overallScore: 78,
+          scoreConfidence: "blended" as const,
+          reportPayload: {
+            source: {
+              requestedUrl: "https://example.com",
+              finalUrl: "https://example.com",
+              analyzedAt: "2026-09-02T02:29:50.123+00:00",
+              title: "Example Domain",
+            },
+            overallScore: 78,
+            scoreConfidence: "blended" as const,
+            summary: "Strong UX structure.",
+            categories: [
+              { category: "clarity" as const, score: 80, confidence: "blended" as const, explanation: "Clear", severity: "low" as const, findings: [] },
+              { category: "visualHierarchy" as const, score: 80, confidence: "blended" as const, explanation: "Good", severity: "low" as const, findings: [] },
+              { category: "ctaEffectiveness" as const, score: 80, confidence: "blended" as const, explanation: "CTA", severity: "low" as const, findings: [] },
+              { category: "copy" as const, score: 80, confidence: "blended" as const, explanation: "Copy", severity: "low" as const, findings: [] },
+              { category: "accessibility" as const, score: 80, confidence: "blended" as const, explanation: "A11y", severity: "low" as const, findings: [] },
+              { category: "mobileUx" as const, score: 80, confidence: "blended" as const, explanation: "Mobile", severity: "low" as const, findings: [] },
+              { category: "trustCredibility" as const, score: 80, confidence: "blended" as const, explanation: "Trust", severity: "low" as const, findings: [] },
+            ],
+            keyStrengths: ["Clear value proposition", "Fast loading", "Legible fonts"],
+            topProblems: [
+              {
+                title: "Weak CTA",
+                severity: "high" as const,
+                evidence: "No distinct CTA",
+                basis: "observed" as const,
+                signalIds: ["sig-1"],
+                recommendation: "Add primary button",
+                category: "ctaEffectiveness" as const,
+              },
+              {
+                title: "Low contrast",
+                severity: "low" as const,
+                evidence: "Contrast issue",
+                basis: "observed" as const,
+                signalIds: ["sig-2"],
+                recommendation: "Fix contrast",
+                category: "visualHierarchy" as const,
+              },
+              {
+                title: "Feature list",
+                severity: "low" as const,
+                evidence: "Bullet points",
+                basis: "observed" as const,
+                signalIds: ["sig-3"],
+                recommendation: "Group bullets",
+                category: "copy" as const,
+              },
+            ],
+            quickWins: [
+              {
+                title: "Add sticky header CTA",
+                detail: "Keep conversion path visible during scroll.",
+                category: "ctaEffectiveness" as const,
+              },
+              {
+                title: "Highlight primary plan",
+                detail: "Add recommended badge to pro tier.",
+                category: "visualHierarchy" as const,
+              },
+              {
+                title: "Add security badge",
+                detail: "Include SOC2 icon near checkout link.",
+                category: "trustCredibility" as const,
+              },
+            ],
+            detailedRecommendations: [
+              {
+                title: "Restructure pricing grid",
+                detail: "Align feature comparison rows for faster scanning.",
+                category: "visualHierarchy" as const,
+              },
+            ],
+            observedSignals: [],
+          },
+          createdAt: "2026-09-02T02:30:10.90152+00:00",
+        },
+        auditRun: {
+          id: "ec0759db-6a22-4d65-90f1-d12d71382e33",
+          monitoredPageId: "0a6f9020-5d17-4866-a94b-c7360963d7c9",
+          projectId: "8b956a42-fd0c-4cf6-ac66-3da3b07535cb",
+          organizationId: "7a845931-eb0b-3bf5-aa55-5aa8ad2719ba",
+          invocationType: "manual" as const,
+          status: "completed" as const,
+          targetUrl: "https://example.com",
+          finalUrl: "https://example.com",
+          triggeredByUserId: "6a734820-da0a-2ae4-9944-49979c1608a9",
+          startedAt: "2026-09-02T02:29:50.123+00:00",
+          completedAt: "2026-09-02T02:30:10.90152+00:00",
+          failedAt: null,
+          errorCode: null,
+          errorMessage: null,
+          retryable: null,
+          modelVersion: "gemini-3.6-flash",
+          checkVersion: "1.0.0",
+          promptVersion: "1.0.0",
+          scoringVersion: "1.0.0",
+          retryCount: 0,
+          maxRetries: 3,
+          createdAt: "2026-09-02T02:29:50.123+00:00",
+          updatedAt: "2026-09-02T02:30:10.90152+00:00",
+        },
+        scoreSnapshots: [
+          {
+            id: "03001edf-43d4-42e3-b23b-82bd67c0c880",
+            auditReportId: "91aff772-ba48-4fd0-a731-b6978c024afb",
+            category: "accessibility",
+            score: 80,
+            confidence: "ai-led",
+            createdAt: "2026-09-02T02:30:10.90152+00:00",
+            observedSignalsCount: null,
+            warningCount: null,
+            neutralCount: null,
+          },
+        ],
+        findings: [
+          {
+            id: "c74af7fd-8750-493a-96c3-054489554613",
+            auditReportId: "91aff772-ba48-4fd0-a731-b6978c024afb",
+            auditRunId: "ec0759db-6a22-4d65-90f1-d12d71382e33",
+            monitoredPageId: "0a6f9020-5d17-4866-a94b-c7360963d7c9",
+            projectId: "8b956a42-fd0c-4cf6-ac66-3da3b07535cb",
+            organizationId: "7a845931-eb0b-3bf5-aa55-5aa8ad2719ba",
+            findingType: "top_problem",
+            category: "ctaEffectiveness",
+            title: "Weak CTA",
+            severity: "high",
+            evidence: "No distinct CTA",
+            signalIds: [],
+            recommendation: "Add primary button",
+            displayOrder: 0,
+            createdAt: "2026-09-02T02:30:10.90152+00:00",
+          },
+        ],
+        recommendations: [],
+        shareMetadata: {
+          id: "0c2d3661-09ad-47e7-957b-9f4d03014b25",
+          createdAt: "2026-09-02T12:34:13.994+00:00",
+          expiresAt: "2026-10-02T12:34:13.439+00:00",
+        },
+      };
+
+      const mockDb: any = {
+        rpc: vi.fn().mockResolvedValue({ data: mockRpcPayload, error: null }),
+      };
+      const store = new SupabaseSharePersistenceStore(mockDb);
+
+      const resolved = await store.resolvePublicSharedReport("hash_123");
+      expect(resolved).not.toBeNull();
+      expect(resolved!.report.overallScore).toBe(78);
+      expect(resolved!.shareMetadata.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect(resolved!.scoreSnapshots[0]!.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect(resolved!.findings[0]!.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    });
   });
 });

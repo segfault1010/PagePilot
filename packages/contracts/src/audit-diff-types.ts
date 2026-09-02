@@ -9,6 +9,7 @@ import {
 import {
   AUDIT_ENGINE_SCORING_VERSION,
   findingTypeSchema,
+  isoDateTimeSchema,
   persistedAuditReportResponseSchema,
 } from "./database-types.js";
 
@@ -217,8 +218,8 @@ export const auditDiffSummarySchema = z.object({
 export type AuditDiffSummary = z.infer<typeof auditDiffSummarySchema>;
 
 export const auditDiffMetadataSchema = z.object({
-  previousAnalyzedAt: z.string().datetime().nullable().optional(),
-  currentAnalyzedAt: z.string().datetime(),
+  previousAnalyzedAt: isoDateTimeSchema.nullable().optional(),
+  currentAnalyzedAt: isoDateTimeSchema,
   previousAuditRunId: z.string().uuid().nullable().optional(),
   currentAuditRunId: z.string().uuid().nullable().optional(),
   previousModelVersion: z.string().nullable().optional(),

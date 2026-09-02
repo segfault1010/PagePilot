@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isoDateTimeSchema } from "./audit-types.js";
 
 /**
  * Inngest Event Names for PagePilot durable workflows.
@@ -52,7 +53,7 @@ export const auditCompletedPayloadSchema = z.object({
   monitoredPageId: z.string().uuid(),
   auditReportId: z.string().uuid(),
   overallScore: z.number().min(0).max(100),
-  completedAt: z.string().datetime(),
+  completedAt: isoDateTimeSchema,
 });
 
 export type AuditCompletedPayload = z.infer<typeof auditCompletedPayloadSchema>;
@@ -80,7 +81,7 @@ export const auditFailedPayloadSchema = z.object({
   errorCode: z.string(),
   errorMessage: z.string(),
   retryable: z.boolean(),
-  failedAt: z.string().datetime(),
+  failedAt: isoDateTimeSchema,
 });
 
 export type AuditFailedPayload = z.infer<typeof auditFailedPayloadSchema>;
@@ -101,7 +102,7 @@ export type AuditFailedEvent = z.infer<typeof auditFailedEventSchema>;
  * Payload contract for the `audit/schedule-weekly` event.
  */
 export const auditScheduleWeeklyPayloadSchema = z.object({
-  triggeredAt: z.string().datetime().optional(),
+  triggeredAt: isoDateTimeSchema.optional(),
   organizationId: z.string().uuid().optional(),
   projectId: z.string().uuid().optional(),
 });

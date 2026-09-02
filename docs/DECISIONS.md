@@ -511,3 +511,27 @@ To establish a dedicated, secure multi-tenant database environment for PagePilot
 - **Security & Non-Disruption**:
   - `SUPABASE_SERVICE_ROLE_KEY`, `GEMINI_API_KEY`, and `INNGEST_SIGNING_KEY` confirmed 100% absent from client bundle (`apps/web/dist`).
   - Anonymous MVP audits (`POST /api/analyze`) remain open and functional without requiring authentication (`pnpm run verify:gemini` PASS).
+
+## D59 — Shared ISO-8601 Datetime Schema with Timezone Offset Support and Canonical Server Normalization
+
+- **Problem & Root Cause**:
+  - Browser verification revealed two datetime validation defects when interacting with the dedicated Supabase Postgres instance:
+    1. Project and monitored page timestamps failed frontend Zod schema validation because PostgreSQL `timestamptz` columns return ISO-8601 strings with timezone offsets (e.g. `+00:00`, `+05:30`), whereas default `z.string().datetime()` strictly requires `Z`.
+    2. Share link creation returned HTTP 500 when `mapShareLinkRow` parsed `created_at` from the database.
+- **Architectural & Security Rules Preserved**:
+  - Validation is NOT weakened to accept arbitrary strings; it is bounded to RFC 3339 / ISO-8601 compliant datetime representations with valid offsets via `z.string().datetime({ offset: true })`.
+  - Authentication, RLS, audit scoring, and historical report immutability remain strictly untouched.
+  - Database stores continue to persist standard PostgreSQL `timestamptz`.
+- **Implementation Strategy**:
+  - **Shared Contract Layer (`@pagepilot/contracts`)**:
+    - Centralized `isoDateTimeSchema = z.string().datetime({ offset: true })` in `packages/contracts/src/audit-types.ts` and re-exported it across `database-types.ts`, `alert-types.ts`, `audit-diff-types.ts`, and `events.ts`.
+    - Defined `sharedScoreSnapshotSchema` and `sharedFindingEntitySchema` matching the public projection returned by the `get_shared_audit_report` RPC.
+  - **API Store Normalization (`apps/api`)**:
+    - Implemented `toNormalizedIsoDate(val)` in `projects-store.ts`, `share-store.ts`, and `work-items-store.ts` to convert any valid date string or Date object into a canonical UTC ISO string (`toISOString()`, ending in `Z`) before returning through the API.
+    - Normalized all timestamps across `rowToProject`, `rowToMonitoredPage`, `mapShareLinkRow`, and `resolvePublicSharedReport`.
+- **Verification Evidence**:
+  - Full test suite passes: 557 tests passing across 62 test files.
+  - TypeScript build (`tsc -b`) and production bundle build succeed with 0 errors.
+  - Unit regression tests verify parsing of Supabase `+00:00` strings and canonical normalization.
+  - Browser verification verified in real browser: Project list renders cleanly, project creation & refresh succeeds, share link creation returns HTTP 201, and standalone public shared report view renders completely without authentication.
+
