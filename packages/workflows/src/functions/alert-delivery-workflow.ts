@@ -6,23 +6,35 @@ import {
 } from "@pagepilot/contracts";
 import { inngestClient } from "../client.js";
 import type { WorkflowPersistenceStore } from "../types.js";
-import type { NotificationProvider } from "../notifications/types.js";
+import type {
+  NotificationPayload,
+  NotificationProvider,
+} from "../notifications/types.js";
 import { createDefaultNotificationProvider } from "../notifications/email-provider.js";
+import { SlackNotificationProvider } from "../notifications/slack-provider.js";
+import { WebhookNotificationProvider } from "../notifications/webhook-provider.js";
 
 export interface AlertDeliveryDeps {
   store: WorkflowPersistenceStore;
   notificationProvider?: NotificationProvider;
+  slackProvider?: SlackNotificationProvider;
+  webhookProvider?: WebhookNotificationProvider;
   client?: typeof inngestClient;
   appBaseUrl?: string;
 }
 
 /**
- * Creates the durable Inngest workflow for delivering alert notifications.
+ * Creates the durable Inngest workflow for delivering alert notifications
+ * across multiple channels (Email, Slack, Webhook) with idempotent delivery barriers.
  */
 export function createAlertDeliveryWorkflow(deps: AlertDeliveryDeps) {
   const client = deps.client ?? inngestClient;
-  const provider =
+  const emailProvider =
     deps.notificationProvider ?? createDefaultNotificationProvider();
+  const slackProvider =
+    deps.slackProvider ?? new SlackNotificationProvider();
+  const webhookProvider =
+    deps.webhookProvider ?? new WebhookNotificationProvider();
   const appBaseUrl = deps.appBaseUrl || "https://pagepilot.dev";
 
   return client.createFunction(
@@ -103,31 +115,43 @@ export function createAlertDeliveryWorkflow(deps: AlertDeliveryDeps) {
       const alert = loadResult.alert;
 
       // -----------------------------------------------------------------------
-      // Step 2: Resolve authorized recipients
+      // Step 2: Resolve authorized recipients & active integrations
       // -----------------------------------------------------------------------
       const recipientsResult = await step.run("resolve-recipients", async () => {
-        const members = await deps.store.listOrganizationRecipients(
-          payload.organizationId,
-        );
+        const [members, integrations] = await Promise.all([
+          deps.store.listOrganizationRecipients(payload.organizationId),
+          deps.store.listSubscribedIntegrations(
+            payload.organizationId,
+            payload.projectId,
+            alert.ruleType,
+          ),
+        ]);
 
-        const validRecipients = members.filter(
+        const validEmailRecipients = (members || []).filter(
           (m) => typeof m.email === "string" && m.email.includes("@"),
         );
 
-        if (validRecipients.length === 0) {
+        const activeIntegrations = integrations || [];
+
+        if (
+          validEmailRecipients.length === 0 &&
+          activeIntegrations.length === 0
+        ) {
           return {
             action: "no_recipients" as const,
-            recipients: [],
+            emailRecipients: [],
+            integrations: [],
           };
         }
 
         return {
           action: "proceed" as const,
-          recipients: validRecipients.map((r) => ({
+          emailRecipients: validEmailRecipients.map((r) => ({
             id: r.id,
             email: r.email,
             role: r.role,
           })),
+          integrations: activeIntegrations,
         };
       });
 
@@ -145,6 +169,26 @@ export function createAlertDeliveryWorkflow(deps: AlertDeliveryDeps) {
         };
       }
 
+      // Base notification payload passed to all channel providers
+      const baseNotificationPayload: NotificationPayload = {
+        alertId: alert.id,
+        organizationId: alert.organizationId,
+        projectId: alert.projectId,
+        monitoredPageId: alert.monitoredPageId,
+        pageUrl: loadResult.pageUrl,
+        ruleType: alert.ruleType,
+        severity: alert.severity,
+        title: alert.title,
+        reasonSummary: alert.reasonSummary,
+        reasonDetails: alert.reasonDetails ?? undefined,
+        category: alert.category ?? undefined,
+        scoreDelta: alert.scoreDelta ?? undefined,
+        previousValue: alert.previousValue ?? undefined,
+        currentValue: alert.currentValue ?? undefined,
+        appBaseUrl,
+        recipientEmail: "",
+      };
+
       // -----------------------------------------------------------------------
       // Step 3: Deliver notifications (with delivery_key idempotency barrier)
       // -----------------------------------------------------------------------
@@ -152,14 +196,14 @@ export function createAlertDeliveryWorkflow(deps: AlertDeliveryDeps) {
         let successCount = 0;
         let failureCount = 0;
 
-        for (const recipient of recipientsResult.recipients) {
+        // 3a. Email channel delivery
+        for (const recipient of recipientsResult.emailRecipients) {
           const deliveryKey = buildAlertDeliveryKey(
             alert.id,
             "email",
             recipient.email,
           );
 
-          // Get or claim delivery record in database
           const { delivery } = await deps.store.getOrCreateDelivery({
             alertId: alert.id,
             organizationId: alert.organizationId,
@@ -171,28 +215,13 @@ export function createAlertDeliveryWorkflow(deps: AlertDeliveryDeps) {
             metadata: {},
           });
 
-          // If already delivered to this recipient, skip sending (idempotency guard)
           if (delivery.status === "delivered") {
             successCount++;
             continue;
           }
 
-          const sendResult = await provider.send({
-            alertId: alert.id,
-            organizationId: alert.organizationId,
-            projectId: alert.projectId,
-            monitoredPageId: alert.monitoredPageId,
-            pageUrl: loadResult.pageUrl,
-            ruleType: alert.ruleType,
-            severity: alert.severity,
-            title: alert.title,
-            reasonSummary: alert.reasonSummary,
-            reasonDetails: alert.reasonDetails ?? undefined,
-            category: alert.category ?? undefined,
-            scoreDelta: alert.scoreDelta ?? undefined,
-            previousValue: alert.previousValue ?? undefined,
-            currentValue: alert.currentValue ?? undefined,
-            appBaseUrl,
+          const sendResult = await emailProvider.send({
+            ...baseNotificationPayload,
             recipientEmail: recipient.email,
           });
 
@@ -213,6 +242,72 @@ export function createAlertDeliveryWorkflow(deps: AlertDeliveryDeps) {
             if (isRetryable) {
               throw new Error(
                 `Failed to deliver alert email to ${recipient.email}: ${sendResult.error || "Provider error"}`,
+              );
+            }
+          }
+        }
+
+        // 3b. Integrations channel delivery (Slack + Webhooks)
+        for (const integration of recipientsResult.integrations) {
+          const channel = integration.provider;
+          const deliveryKey = buildAlertDeliveryKey(
+            alert.id,
+            channel,
+            integration.id,
+          );
+
+          const { delivery } = await deps.store.getOrCreateDelivery({
+            alertId: alert.id,
+            organizationId: alert.organizationId,
+            channel,
+            recipient:
+              channel === "slack"
+                ? integration.name
+                : integration.targetUrl,
+            integrationConnectionId: integration.id,
+            deliveryKey,
+            status: "pending",
+            attempts: 0,
+            metadata: {},
+          });
+
+          if (delivery.status === "delivered") {
+            successCount++;
+            continue;
+          }
+
+          let sendResult;
+          if (channel === "slack") {
+            sendResult = await slackProvider.send(
+              baseNotificationPayload,
+              integration.targetUrl,
+            );
+          } else {
+            sendResult = await webhookProvider.send(
+              baseNotificationPayload,
+              integration.targetUrl,
+              integration.signingSecret,
+            );
+          }
+
+          if (sendResult.success) {
+            await deps.store.recordDeliverySuccess(delivery.id, {
+              integrationId: integration.id,
+              provider: integration.provider,
+            });
+            successCount++;
+          } else {
+            failureCount++;
+            const isRetryable = sendResult.retryable ?? true;
+            await deps.store.recordDeliveryFailure(
+              delivery.id,
+              sendResult.error || "Integration delivery failed",
+              !isRetryable,
+            );
+
+            if (isRetryable) {
+              throw new Error(
+                `Failed to deliver ${channel} alert to ${integration.name}: ${sendResult.error || "Provider error"}`,
               );
             }
           }

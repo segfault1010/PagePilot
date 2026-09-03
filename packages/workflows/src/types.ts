@@ -1,6 +1,7 @@
 import type {
   AlertDeliveryEntity,
   AlertEntity,
+  AlertRuleType,
   AlertStatus,
   AuditRun,
   MonitoredPage,
@@ -148,6 +149,26 @@ export interface WorkflowPersistenceStore {
   listOrganizationRecipients(
     orgId: string,
   ): Promise<Array<{ id: string; email: string; role: Role }>>;
+
+  /**
+   * Resolves active integration subscriptions (Slack / Webhook) for an alert event.
+   * Matches both project-scoped integrations (project_id = projectId) and organization-wide integrations (project_id IS NULL)
+   * that are active and subscribed to the specified event type.
+   */
+  listSubscribedIntegrations(
+    orgId: string,
+    projectId: string,
+    eventType: AlertRuleType,
+  ): Promise<
+    Array<{
+      id: string;
+      provider: "slack" | "webhook";
+      name: string;
+      targetUrl: string;
+      signingSecret?: string;
+      config?: Record<string, unknown>;
+    }>
+  >;
 
   /**
    * Atomically claims or retrieves an alert delivery attempt using the deterministic deliveryKey.

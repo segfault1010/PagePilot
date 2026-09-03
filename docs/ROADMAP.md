@@ -246,18 +246,20 @@ This roadmap defines the evolution of PagePilot from a single-project MVP into a
 ---
 
 ### Milestone 5: Integrations & Measurement
-- **Status:** `Planned`
+- **Status:** `Active`
 - **Product Outcome:** Connect PagePilot findings to team messaging tools and analytics context.
 - **Dependencies:** Milestone 3, Milestone 4.
-- **Must Include:**
-  - Slack incoming webhooks / app notifications for score drops and high-severity findings.
-  - Generic outbound webhooks with HMAC-SHA256 signature headers.
-  - CSV export for findings and recommendation backlogs.
-  - Page-level analytics import (conversion rates, bounce rates) clearly labeled as business context separate from UX inference.
+- **Tasks & Execution Plan:**
+  - **Task 5.1 — Slack / Webhook Integration Foundation & Alert Subscriptions:** `Complete` (Database schema `integration_connections`, forced RLS, AES-256-GCM authenticated credential encryption, secret masking, outbound SSRF destination protection, HMAC-SHA256 signing, multi-channel Slack & Webhook Inngest alert dispatch with idempotent delivery keys).
+  - **Task 5.2 — Integrations Management UI & Test Ping Interface:** `Complete` (Integrations management UI in @pagepilot/web with Slack & Webhook forms, project-scoped vs org-wide scope handling, masked credentials display, role-gated mutations for owner/admin, test ping action with latency & status feedback, SSRF BLOCKED_DESTINATION error handling, filtering, and 18 UI/client tests).
+  - **Task 5.3 — CSV Export for Findings & Recommendation Backlogs:** `Planned` (Project and report CSV export streams with proper quoting, severity/category/effort mapping, and date formatting).
+  - **Task 5.4 — Page-Level Analytics Import & Context Visualization:** `Planned` (Analytics metric ingestion, schema versioning, labeled business context separate from UX inference).
 - **Explicitly Defer:** Autonomous page edits, automatic A/B testing execution.
 - **Acceptance Criteria:**
   - Inbound and outbound webhook signatures verified.
-  - Integration credentials encrypted at rest.
+  - Integration credentials encrypted at rest with AES-256-GCM and never returned to the client.
+  - SSRF destination protection strictly enforced on all outbound webhooks.
+  - Multi-channel delivery is idempotent and preserves previous successful audit reports on failure.
 
 ---
 

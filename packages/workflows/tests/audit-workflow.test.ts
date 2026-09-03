@@ -166,6 +166,7 @@ describe("Durable Audit Workflow (execute-audit-workflow)", () => {
       getAlert: vi.fn(async () => null),
       updateAlertStatus: vi.fn(async () => {}),
       listOrganizationRecipients: vi.fn(async () => []),
+      listSubscribedIntegrations: vi.fn(async () => []),
       getOrCreateDelivery: vi.fn(async () => ({
         delivery: { id: "del-1" } as any,
         isExisting: false,

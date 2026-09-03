@@ -535,3 +535,113 @@ To establish a dedicated, secure multi-tenant database environment for PagePilot
   - Unit regression tests verify parsing of Supabase `+00:00` strings and canonical normalization.
   - Browser verification verified in real browser: Project list renders cleanly, project creation & refresh succeeds, share link creation returns HTTP 201, and standalone public shared report view renders completely without authentication.
 
+## D60 — Slack & Webhook Integration Foundation, Credential Encryption, and Idempotent Multi-Channel Alert Subscriptions
+
+- **Problem & Motivation**:
+  - Growth and engineering teams monitor critical landing pages but require instant alert notifications in Slack channels and through HTTP webhooks rather than email alone.
+  - Integration endpoints require secure handling of untrusted destinations (SSRF defense), encryption of incoming webhook URLs and signing secrets at rest, tamper-evident signing of outbound webhooks, and idempotent dispatch across channels.
+- **Architectural Decision & Scope**:
+  - Implemented the full backend, persistence, security, cryptographic, and workflow engine foundations for Slack and Webhook integrations (Milestone 5, Task 5.1).
+  - Scope deliberately bounded to Task 5.1 foundation; UI (Task 5.2), CSV export (Task 5.3), and analytics import (Task 5.4) remain cleanly deferred.
+- **Database Architecture & Schema (`20260904120000_integration_connections.sql`)**:
+  - Created `public.integration_connections`:
+    - Columns: `id`, `organization_id`, `project_id` (nullable), `provider` (`slack` | `webhook`), `name`, `status` (`active` | `disabled`), `encrypted_credentials` (`text`, envelope `v1:<iv>:<tag>:<ciphertext>`), `events` (`text[]`), `config` (`jsonb`), `created_by_user_id`, `created_at`, `updated_at`.
+    - Partial uniqueness: `idx_integration_connections_org_name` ensures unique integration names per organization.
+    - Foreign keys with `ON DELETE CASCADE` on `organization_id` and `project_id`.
+  - Row-Level Security:
+    - RLS enabled and forced (`FORCE ROW LEVEL SECURITY`).
+    - SELECT: `is_org_member(organization_id)` allows all org members (owners, admins, members, viewers) to view integrations.
+    - INSERT/UPDATE/DELETE: `is_org_admin_or_owner(organization_id)` restricts mutations to administrative roles only.
+  - Channel Expansion on `public.alert_deliveries`:
+    - Dropped previous check constraint and updated `alert_deliveries_channel_check` to `CHECK (channel IN ('email', 'slack', 'webhook'))`.
+    - Added `integration_connection_id UUID REFERENCES public.integration_connections(id) ON DELETE SET NULL` with index `idx_alert_deliveries_integration_id`.
+- **Symmetric Encryption & Secret Masking (`apps/api/src/integrations/crypto.ts`)**:
+  - AES-256-GCM authenticated encryption:
+    - 96-bit random initialization vector (IV) per encryption operation.
+    - 128-bit authentication tag protecting against ciphertext tampering.
+    - Envelope format: `v1:<iv_hex>:<tag_hex>:<ciphertext_hex>`.
+    - Tampered or truncated payloads fail authenticated decryption closed.
+  - Secret Projection & Masking:
+    - Raw decrypted secrets are strictly server-only and NEVER returned to the client.
+    - Integration queries project `maskedTargetUrl` (e.g. `https://hooks.slack.com/services/T01***/*****/********`) and boolean `hasSigningSecret`.
+- **Outbound SSRF & Destination Protection (`apps/api/src/integrations/destination-guard.ts`)**:
+  - Every outbound destination is validated before integration persistence and before test ping dispatch.
+  - Rejects:
+    - Protocols other than `http:` and `https:`.
+    - Custom ports (restricted strictly to 80 and 443).
+    - Embedded user credentials (`user:pass@host`).
+    - Private IP literals, loopback (`localhost`, `127.0.0.1`), RFC1918 subnets (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`).
+    - Cloud instance metadata services (`169.254.169.254`).
+    - Mixed-record DNS destinations (all resolved records must be publicly routable addresses via `isPubliclyRoutableAddress`).
+- **Cryptographic Webhook Signatures & Anti-Replay (`packages/workflows/src/notifications/crypto.ts`)**:
+  - Outbound webhooks include:
+    - `X-PagePilot-Signature: sha256=<hmac_hex>` computed as `HMAC-SHA256(secret, `${timestamp}.${payload}`)`.
+    - `X-PagePilot-Timestamp: <unix_seconds>`.
+  - Signature verification enforces:
+    - Replay protection with strict 300-second tolerance window.
+    - Constant-time verification using `crypto.timingSafeEqual` preventing timing-attack vulnerabilities.
+- **Multi-Channel Durable Inngest Delivery (`packages/workflows/src/functions/alert-delivery-workflow.ts`)**:
+  - In `resolve-recipients`: resolves authorized email recipients alongside active subscribed Slack and Webhook integrations.
+  - In `deliver-notifications`:
+    - Dispatches to Slack via `SlackNotificationProvider` using rich Block Kit formatting (header, severity badge, rule details, score delta, and landing page URL).
+    - Dispatches to Webhooks via `WebhookNotificationProvider` with structured JSON event envelope and HMAC signature headers.
+    - Idempotency barrier: deterministic `buildAlertDeliveryKey(alert.id, channel, targetId)` claimed atomically via `getOrCreateDelivery`. Duplicate invocations skip already-delivered channels without duplicate outbound HTTP calls.
+    - Error handling: provider 4xx errors marked non-retryable; transient 5xx/network errors retryable; overall alert status preserves last successful state.
+- **Verification Evidence**:
+  - Live Supabase project `qzlffxlmrhqfjeohsnkm`: Migration applied, forced RLS verified on `pg_class`, RLS policies verified on `pg_policies`, check constraint and foreign keys verified on `pg_constraint`.
+  - Full test suite passes: 603 tests passing across 67 test files (0 failures).
+  - TypeScript build (`tsc -b`) and Vite production bundle build succeed with 0 errors.
+
+## D61 — Integrations Management UI, Scope Handling, Masked Secret Preservation, and Interactive Test Ping Interface
+
+- **Problem & Motivation**:
+  - Growth teams and workspace administrators need a clear, accessible, and secure interface to configure, test, and manage outbound alert integrations (Slack channels and HTTP webhooks) without exposing plaintext credentials or requiring manual database intervention.
+  - Need to support both project-scoped integrations and organization-wide dispatchers, enforce role-based access control, provide instant test ping verification with roundtrip latency, and handle SSRF security policy rejections safely.
+- **Architectural Decisions & Implementation**:
+  - **Shared Contract Enhancement (`packages/contracts/src/integration-types.ts`)**:
+    - Added optional `isOrganizationWide: z.boolean().optional()` to `createIntegrationConnectionSchema` to allow clients to explicitly declare organization-wide scope.
+  - **Web Client API Layer (`apps/web/src/features/integrations/api.ts`)**:
+    - Typed API client covering `listIntegrations`, `getIntegration`, `createIntegration`, `updateIntegration`, `deleteIntegration`, and `testIntegration`.
+    - Automatically injects current Supabase session token (`Authorization: Bearer <token>`).
+    - Validates all API responses with Zod schemas (`integrationListResponseSchema`, `integrationDetailResponseSchema`, `testIntegrationResponseSchema`).
+    - Translates backend error envelopes into structured `IntegrationsApiClientError` preserving HTTP status and machine-readable error codes.
+  - **Component Architecture (`apps/web/src/features/integrations/components/`)**:
+    - `IntegrationCard`:
+      - Provider branding with distinct visual styles for Slack and generic HTTP webhooks.
+      - Status pill with pulsing live indicator when active; disabled state when inactive.
+      - Scope badge indicating "Org-Wide" vs "Project-Scoped".
+      - Masked target URL display with instant copy-to-clipboard button.
+      - HMAC badge indicating tamper-evident cryptographic signing.
+      - Event pills detailing all subscribed alert triggers.
+      - Quick status toggle and action buttons (Edit, Delete, Test Ping).
+    - `IntegrationModal`:
+      - Dialog supporting creation and editing of integrations.
+      - Provider card selector (Slack Webhook vs Generic Webhook).
+      - Scope selector allowing project-scoped or organization-wide alerts.
+      - Safe client-side URL policy checks (`http:` / `https:`, valid port, no credentials).
+      - Masked credential preservation: during edit, the URL field displays the masked placeholder; submitting empty/whitespace leaves the encrypted secret unchanged.
+      - Webhook signing secret field with toggleable show/hide visibility.
+      - Multi-select trigger event matrix across all 6 alert rules with quick "Defaults" and "Select All" buttons.
+      - Specialized SSRF error handling: catches `BLOCKED_DESTINATION` and renders a clear security warning without exposing internal infrastructure details.
+    - `DeleteIntegrationModal`:
+      - Confirmation dialog detailing the target endpoint and warning that alert deliveries will immediately cease.
+    - `IntegrationsManager`:
+      - Orchestrates data fetching, filtering by search query, provider (`all` | `slack` | `webhook`), scope (`all` | `org` | `project`), and status (`all` | `active` | `disabled`).
+      - Renders interactive Test Ping feedback banner showing success/failure status, HTTP response code, and measured roundtrip latency (e.g. `118 ms`).
+      - Empty states for zero integrations and zero filter matches.
+  - **Workspace Integration**:
+    - Added "Integrations" sub-tab to `ProjectDetail` for project-centric configuration.
+    - Added "Integrations" primary section to `WorkspaceShell` header nav with project selector for organization-wide oversight.
+  - **Role-Based Access Control (RBAC)**:
+    - Administrative roles (`owner`, `admin`): Full access to create, edit, toggle status, delete, and trigger test pings.
+    - Non-administrative roles (`member`, `viewer`): Mutation actions and "+ Add Integration" are hidden; Test Ping button is disabled with an explanatory tooltip.
+  - **Security & Secret Leakage Auditing**:
+    - Plaintext secrets are never stored in client state or returned from the API.
+    - Audited `apps/web/dist/` production bundle using ripgrep: 0 occurrences of `SUPABASE_SERVICE_ROLE_KEY`, `GEMINI_API_KEY`, or `INNGEST_SIGNING_KEY`.
+- **Verification Evidence**:
+  - Full test suite passes: 622 tests passing across 69 test files (0 failures).
+  - Web UI test suite: 18 integration tests pass across `integrations-api-client.test.ts` (7 tests) and `integrations-ui.test.tsx` (11 tests).
+  - TypeScript build (`tsc -b`) and Vite production bundle build succeed with 0 errors.
+
+
+

@@ -620,5 +620,80 @@ describe("SupabaseWorkflowPersistenceStore", () => {
     expect(second.isExisting).toBe(true);
     expect(second.delivery.id).toBe("del-1");
   });
+
+  it("listSubscribedIntegrations queries active integrations, decrypts credentials, and filters by event", async () => {
+    const { encryptCredentials } = await import("../src/integrations/crypto.js");
+    const { encrypted: enc1 } = encryptCredentials({
+      targetUrl: "https://hooks.slack.com/services/T00/B00/SECRET",
+    });
+    const { encrypted: enc2 } = encryptCredentials({
+      targetUrl: "https://api.example.com/wh",
+      signingSecret: "whsec_123",
+    });
+
+    const mockRows = [
+      {
+        id: "int-1",
+        organization_id: orgId,
+        project_id: projectId,
+        provider: "slack",
+        name: "Team Slack",
+        status: "active",
+        encrypted_credentials: enc1,
+        events: ["overall_score_drop"],
+        config: {},
+      },
+      {
+        id: "int-2",
+        organization_id: orgId,
+        project_id: null, // Org-wide
+        provider: "webhook",
+        name: "Org Webhook",
+        status: "active",
+        encrypted_credentials: enc2,
+        events: ["overall_score_drop", "new_high_severity_finding"],
+        config: {},
+      },
+      {
+        id: "int-3",
+        organization_id: orgId,
+        project_id: projectId,
+        provider: "slack",
+        name: "Other Events Slack",
+        status: "active",
+        encrypted_credentials: enc1,
+        events: ["category_score_drop"], // Not subscribed to overall_score_drop
+        config: {},
+      },
+    ];
+
+    const mockClient = {
+      from: vi.fn((table: string) => {
+        expect(table).toBe("integration_connections");
+        const query: any = {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          or: vi.fn().mockResolvedValue({ data: mockRows, error: null }),
+        };
+        return query;
+      }),
+    } as any;
+
+    const store = new SupabaseWorkflowPersistenceStore(mockClient);
+    const integrations = await store.listSubscribedIntegrations(
+      orgId,
+      projectId,
+      "overall_score_drop",
+    );
+
+    expect(integrations).toHaveLength(2);
+    expect(integrations[0]?.id).toBe("int-1");
+    expect(integrations[0]?.targetUrl).toBe(
+      "https://hooks.slack.com/services/T00/B00/SECRET",
+    );
+    expect(integrations[1]?.id).toBe("int-2");
+    expect(integrations[1]?.signingSecret).toBe("whsec_123");
+  });
 });
+
 

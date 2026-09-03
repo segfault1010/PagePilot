@@ -38,6 +38,7 @@ import { PageDetail } from "./page-detail";
 import { HistoricalReportView } from "./historical-report-view";
 import { ReportComparisonView } from "./report-comparison-view";
 import { WorkItemsBacklog } from "../../work-items/components/work-items-backlog";
+import { IntegrationsManager } from "../../integrations/components/integrations-manager";
 
 const PAGE_SIZE = 10;
 
@@ -51,7 +52,7 @@ export function WorkspaceShell({ onSwitchToOneOffAudit }: WorkspaceShellProps) {
   const orgName = workspace?.organization.name || "Workspace";
 
   // Navigation tab state
-  const [navSection, setNavSection] = useState<"projects" | "work">("projects");
+  const [navSection, setNavSection] = useState<"projects" | "work" | "integrations">("projects");
 
   // Organization Members
   const [members, setMembers] = useState<OrganizationMember[]>([]);
@@ -419,6 +420,21 @@ export function WorkspaceShell({ onSwitchToOneOffAudit }: WorkspaceShellProps) {
               </button>
               <button
                 type="button"
+                onClick={() => {
+                  setNavSection("integrations");
+                  setActiveReport(null);
+                  setActiveComparison(null);
+                }}
+                className={`rounded-md px-3 py-1.5 font-medium transition ${
+                  navSection === "integrations"
+                    ? "bg-neutral-900 text-neutral-100"
+                    : "text-neutral-400 hover:text-neutral-200"
+                }`}
+              >
+                Integrations
+              </button>
+              <button
+                type="button"
                 onClick={onSwitchToOneOffAudit}
                 className="rounded-md px-3 py-1.5 font-medium text-neutral-400 transition hover:text-neutral-200"
               >
@@ -466,7 +482,38 @@ export function WorkspaceShell({ onSwitchToOneOffAudit }: WorkspaceShellProps) {
         )}
 
         {/* View Routing */}
-        {navSection === "work" ? (
+        {navSection === "integrations" ? (
+          selectedProject || projects.length > 0 ? (
+            <IntegrationsManager
+              project={selectedProject ?? projects[0]!}
+              role={role}
+              availableProjects={projects}
+              onSelectProject={(projId) => {
+                setSelectedProjectId(projId);
+                const found = projects.find((p) => p.id === projId);
+                if (found) setSelectedProject(found);
+              }}
+            />
+          ) : (
+            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-neutral-800 bg-neutral-900/20 p-12 text-center">
+              <h3 className="text-sm font-semibold text-neutral-200">
+                No Projects Available
+              </h3>
+              <p className="mt-1.5 max-w-md text-xs text-neutral-400">
+                Create a project first before configuring alert integrations.
+              </p>
+              {role !== "viewer" && (
+                <button
+                  type="button"
+                  onClick={() => setNavSection("projects")}
+                  className="mt-4 rounded-lg bg-white px-3.5 py-1.5 text-xs font-semibold text-neutral-950 hover:bg-neutral-200 transition"
+                >
+                  Go to Projects
+                </button>
+              )}
+            </div>
+          )
+        ) : navSection === "work" ? (
           <WorkItemsBacklog
             projects={projects}
             selectedProjectId={selectedProjectId}

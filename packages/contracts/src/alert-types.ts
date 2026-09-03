@@ -136,7 +136,7 @@ export const DELIVERY_STATUSES = [
 export const deliveryStatusSchema = z.enum(DELIVERY_STATUSES);
 export type DeliveryStatus = z.infer<typeof deliveryStatusSchema>;
 
-export const DELIVERY_CHANNELS = ["email"] as const;
+export const DELIVERY_CHANNELS = ["email", "slack", "webhook"] as const;
 export const deliveryChannelSchema = z.enum(DELIVERY_CHANNELS);
 export type DeliveryChannel = z.infer<typeof deliveryChannelSchema>;
 
@@ -190,6 +190,7 @@ export const alertDeliveryEntitySchema = z.object({
   channel: deliveryChannelSchema.default("email"),
   recipient: z.string().min(1),
   deliveryKey: z.string().min(1),
+  integrationConnectionId: z.string().uuid().nullable().optional(),
   status: deliveryStatusSchema.default("pending"),
   attempts: z.number().int().min(0).default(0),
   lastAttemptedAt: isoDateTimeSchema.nullable().optional(),

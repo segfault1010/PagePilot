@@ -89,6 +89,7 @@ describe("Alert Delivery Inngest Workflow", () => {
       getAlert: vi.fn().mockResolvedValue(mockAlert),
       updateAlertStatus: vi.fn().mockResolvedValue(undefined),
       listOrganizationRecipients: vi.fn().mockResolvedValue(mockRecipients),
+      listSubscribedIntegrations: vi.fn().mockResolvedValue([]),
       getOrCreateDelivery: vi.fn().mockImplementation(async (d) => {
         const existing = deliveries.get(d.deliveryKey);
         if (existing) {
@@ -307,4 +308,126 @@ describe("Alert Delivery Inngest Workflow", () => {
       false, // retryable
     );
   });
+
+  it("delivers alert notifications to subscribed Slack and Webhook integrations", async () => {
+    const mockIntegrations = [
+      {
+        id: "int-slack-1",
+        provider: "slack" as const,
+        name: "#alerts-ux",
+        targetUrl: "https://hooks.slack.com/services/T00/B00/SECRET",
+        config: {},
+      },
+      {
+        id: "int-webhook-1",
+        provider: "webhook" as const,
+        name: "Security Webhook",
+        targetUrl: "https://api.example.com/alerts",
+        signingSecret: "whsec_test_123",
+        config: {},
+      },
+    ];
+
+    const store = createStoreStub({
+      listOrganizationRecipients: vi.fn().mockResolvedValue([]), // No emails
+      listSubscribedIntegrations: vi.fn().mockResolvedValue(mockIntegrations),
+    });
+
+    const mockSlackProvider = {
+      channel: "slack" as const,
+      send: vi.fn().mockResolvedValue({ success: true }),
+    };
+
+    const mockWebhookProvider = {
+      channel: "webhook" as const,
+      send: vi.fn().mockResolvedValue({ success: true }),
+    };
+
+    const workflow = createAlertDeliveryWorkflow({
+      store,
+      slackProvider: mockSlackProvider as any,
+      webhookProvider: mockWebhookProvider as any,
+    });
+    const step = createMockStep();
+
+    const result = await (workflow as any)["fn"]({
+      event: {
+        name: ALERT_CREATED_EVENT,
+        data: { alertId, organizationId: orgId, projectId, monitoredPageId: pageId },
+      },
+      step,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.status).toBe("delivered");
+    expect(result.deliveredCount).toBe(2);
+
+    expect(mockSlackProvider.send).toHaveBeenCalledTimes(1);
+    expect(mockSlackProvider.send).toHaveBeenCalledWith(
+      expect.objectContaining({ alertId, ruleType: "overall_score_drop" }),
+      "https://hooks.slack.com/services/T00/B00/SECRET",
+    );
+
+    expect(mockWebhookProvider.send).toHaveBeenCalledTimes(1);
+    expect(mockWebhookProvider.send).toHaveBeenCalledWith(
+      expect.objectContaining({ alertId, ruleType: "overall_score_drop" }),
+      "https://api.example.com/alerts",
+      "whsec_test_123",
+    );
+
+    expect(store.recordDeliverySuccess).toHaveBeenCalledTimes(2);
+    expect(store.updateAlertStatus).toHaveBeenCalledWith(alertId, "delivered");
+  });
+
+  it("skips already delivered integration attempts based on deliveryKey idempotency", async () => {
+    const mockIntegrations = [
+      {
+        id: "int-slack-1",
+        provider: "slack" as const,
+        name: "#alerts-ux",
+        targetUrl: "https://hooks.slack.com/services/T00/B00/SECRET",
+      },
+    ];
+
+    const store = createStoreStub({
+      listOrganizationRecipients: vi.fn().mockResolvedValue([]),
+      listSubscribedIntegrations: vi.fn().mockResolvedValue(mockIntegrations),
+    });
+
+    const mockSlackProvider = {
+      channel: "slack" as const,
+      send: vi.fn().mockResolvedValue({ success: true }),
+    };
+
+    const workflow = createAlertDeliveryWorkflow({
+      store,
+      slackProvider: mockSlackProvider as any,
+    });
+    const step = createMockStep();
+
+    // 1. First execution delivers successfully
+    await (workflow as any)["fn"]({
+      event: {
+        name: ALERT_CREATED_EVENT,
+        data: { alertId, organizationId: orgId, projectId, monitoredPageId: pageId },
+      },
+      step,
+    });
+
+    expect(mockSlackProvider.send).toHaveBeenCalledTimes(1);
+
+    // 2. Second execution (replay/duplicate event) detects already delivered
+    const replayResult = await (workflow as any)["fn"]({
+      event: {
+        name: ALERT_CREATED_EVENT,
+        data: { alertId, organizationId: orgId, projectId, monitoredPageId: pageId },
+      },
+      step,
+    });
+
+    expect(replayResult.deliveredCount).toBe(1);
+    // Provider was NOT called a second time
+    expect(mockSlackProvider.send).toHaveBeenCalledTimes(1);
+  });
 });
+

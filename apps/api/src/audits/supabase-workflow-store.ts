@@ -8,6 +8,7 @@ import {
 import type {
   AlertDeliveryEntity,
   AlertEntity,
+  AlertRuleType,
   AlertStatus,
   AuditRun,
   MonitoredPage,
@@ -24,6 +25,7 @@ import {
   createServerSupabaseClient,
   getServerAuthConfig,
 } from "../auth/supabase-server.js";
+import { decryptCredentials } from "../integrations/crypto.js";
 
 function mapAuditRunRow(row: any): AuditRun {
   return {
@@ -111,6 +113,7 @@ function mapDeliveryRow(row: any): AlertDeliveryEntity {
     organizationId: row.organization_id,
     channel: row.channel ?? "email",
     recipient: row.recipient,
+    integrationConnectionId: row.integration_connection_id ?? null,
     deliveryKey: row.delivery_key,
     status: row.status ?? "pending",
     attempts: row.attempts ?? 0,
@@ -670,6 +673,67 @@ export class SupabaseWorkflowPersistenceStore implements WorkflowPersistenceStor
       }));
   }
 
+  async listSubscribedIntegrations(
+    orgId: string,
+    projectId: string,
+    eventType: AlertRuleType,
+  ): Promise<
+    Array<{
+      id: string;
+      provider: "slack" | "webhook";
+      name: string;
+      targetUrl: string;
+      signingSecret?: string;
+      config?: Record<string, unknown>;
+    }>
+  > {
+    const { data, error } = await this.client
+      .from("integration_connections")
+      .select("*")
+      .eq("organization_id", orgId)
+      .eq("status", "active")
+      .or(`project_id.eq.${projectId},project_id.is.null`);
+
+    if (error || !data) return [];
+
+    const results: Array<{
+      id: string;
+      provider: "slack" | "webhook";
+      name: string;
+      targetUrl: string;
+      signingSecret?: string;
+      config?: Record<string, unknown>;
+    }> = [];
+
+    for (const row of data) {
+      const events: string[] = row.events || [];
+      if (!events.includes(eventType)) {
+        continue;
+      }
+
+      try {
+        const decrypted = decryptCredentials(row.encrypted_credentials);
+        if (decrypted.targetUrl) {
+          results.push({
+            id: row.id,
+            provider: row.provider,
+            name: row.name,
+            targetUrl: decrypted.targetUrl,
+            signingSecret: decrypted.signingSecret || undefined,
+            config: row.config || {},
+          });
+        }
+      } catch (err) {
+        console.error(
+          `[workflow-store] failed to decrypt credentials for integration ${row.id}:`,
+          err,
+        );
+      }
+    }
+
+    return results;
+  }
+
   async getOrCreateDelivery(
     delivery: Omit<AlertDeliveryEntity, "id" | "createdAt" | "updatedAt">,
   ): Promise<{ delivery: AlertDeliveryEntity; isExisting: boolean }> {
@@ -697,6 +761,8 @@ export class SupabaseWorkflowPersistenceStore implements WorkflowPersistenceStor
         organization_id: delivery.organizationId,
         channel: delivery.channel ?? "email",
         recipient: delivery.recipient,
+        integration_connection_id:
+          (delivery as any).integrationConnectionId ?? null,
         delivery_key: delivery.deliveryKey,
         status: delivery.status ?? "pending",
         attempts: delivery.attempts ?? 0,

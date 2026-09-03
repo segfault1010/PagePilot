@@ -59,6 +59,7 @@ function createMockStore(
     getAlert: vi.fn().mockResolvedValue(null),
     updateAlertStatus: vi.fn().mockResolvedValue(undefined),
     listOrganizationRecipients: vi.fn().mockResolvedValue([]),
+    listSubscribedIntegrations: vi.fn().mockResolvedValue([]),
     getOrCreateDelivery: vi.fn().mockResolvedValue({
       delivery: { id: "mock-del" } as any,
       isExisting: false,

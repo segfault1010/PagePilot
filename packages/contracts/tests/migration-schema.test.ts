@@ -278,7 +278,33 @@ describe("Supabase Multi-Tenant SQL Migration Validation", () => {
     expect(shareSql).toContain("SECURITY DEFINER");
     expect(shareSql).toContain("SET search_path = public, pg_temp");
   });
+
+  it("defines integration_connections table with forced RLS, cascades, and alert_deliveries channel expansion", () => {
+    const intSql = getMigrationSql("20260904120000_integration_connections.sql");
+
+    expect(intSql).toContain("CREATE TABLE IF NOT EXISTS public.integration_connections");
+
+    // Foreign keys & cascades
+    expect(intSql).toMatch(/organization_id\s+UUID\s+NOT\s+NULL\s+REFERENCES\s+public\.organizations\(id\)\s+ON\s+DELETE\s+CASCADE/i);
+    expect(intSql).toMatch(/project_id\s+UUID\s+REFERENCES\s+public\.projects\(id\)\s+ON\s+DELETE\s+CASCADE/i);
+
+    // Alert deliveries channel constraint expansion
+    expect(intSql).toContain("alert_deliveries_channel_check");
+    expect(intSql).toContain("CHECK (channel IN ('email', 'slack', 'webhook'))");
+    expect(intSql).toContain("ADD COLUMN IF NOT EXISTS integration_connection_id UUID");
+
+    // RLS enabled and forced
+    expect(intSql).toContain("ALTER TABLE public.integration_connections ENABLE ROW LEVEL SECURITY;");
+    expect(intSql).toContain("ALTER TABLE public.integration_connections FORCE ROW LEVEL SECURITY;");
+
+    // RLS policies
+    expect(intSql).toContain("integration_connections_select_policy");
+    expect(intSql).toContain("integration_connections_insert_policy");
+    expect(intSql).toContain("integration_connections_update_policy");
+    expect(intSql).toContain("integration_connections_delete_policy");
+  });
 });
+
 
 
 

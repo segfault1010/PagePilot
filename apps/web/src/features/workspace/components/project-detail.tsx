@@ -12,6 +12,7 @@ import { MonitoredPageModal } from "./monitored-page-modal";
 import { DeleteConfirmModal } from "./delete-confirm-modal";
 import { listWorkItems } from "../../work-items/api";
 import { WorkItemDetailModal } from "../../work-items/components/work-item-detail-modal";
+import { IntegrationsManager } from "../../integrations/components/integrations-manager";
 
 export interface ProjectDetailProps {
   project: Project;
@@ -50,7 +51,7 @@ export function ProjectDetail({
   onUpdatePage,
   onDeletePage,
 }: ProjectDetailProps) {
-  const [activeTab, setActiveTab] = useState<"priorities" | "pages">("priorities");
+  const [activeTab, setActiveTab] = useState<"priorities" | "pages" | "integrations">("priorities");
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingPage, setEditingPage] = useState<MonitoredPage | null>(null);
@@ -256,6 +257,17 @@ export function ProjectDetail({
           }`}
         >
           Monitored Pages ({pages.length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("integrations")}
+          className={`rounded-lg px-3 py-1.5 font-medium transition ${
+            activeTab === "integrations"
+              ? "bg-neutral-800 text-neutral-100 font-semibold"
+              : "text-neutral-400 hover:text-neutral-200"
+          }`}
+        >
+          Integrations
         </button>
       </div>
 
@@ -756,6 +768,16 @@ export function ProjectDetail({
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Tab 3: Integrations */}
+      {activeTab === "integrations" && (
+        <div className="pt-2">
+          <IntegrationsManager
+            project={project}
+            role={role}
+          />
         </div>
       )}
 

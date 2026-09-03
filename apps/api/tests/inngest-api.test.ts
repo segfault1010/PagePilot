@@ -55,6 +55,7 @@ describe("Inngest Serve Endpoint (/api/inngest)", () => {
     getAlert: async () => null,
     updateAlertStatus: async () => {},
     listOrganizationRecipients: async () => [],
+    listSubscribedIntegrations: async () => [],
     getOrCreateDelivery: async () => ({
       delivery: { id: "del-1" } as any,
       isExisting: false,

@@ -5,7 +5,7 @@ import {
   analyzeRequestSchema,
   enforceUrlPolicy,
 } from "@pagepilot/contracts";
-import type { AnalysisOutcome } from "@pagepilot/audit-engine";
+import type { AnalysisOutcome, DnsResolver } from "@pagepilot/audit-engine";
 import { analyzeTarget } from "@pagepilot/audit-engine";
 import type { AuthMiddlewareOptions } from "../auth/middleware.js";
 import { requireAuth, requireWorkspace } from "../auth/middleware.js";
@@ -78,6 +78,7 @@ import type { WorkItemsStore } from "../work-items/work-items-store.js";
 import { SupabaseWorkItemsStore } from "../work-items/work-items-store.js";
 import type { SharePersistenceStore } from "../share/share-store.js";
 import { createPublicSharedReportHandler } from "../share/routes.js";
+import type { IntegrationsStore } from "../integrations/integrations-store.js";
 
 export interface AppOptions extends AuthMiddlewareOptions {
   /** Injectable for tests; production uses the real safe-fetch pipeline. */
@@ -90,6 +91,10 @@ export interface AppOptions extends AuthMiddlewareOptions {
   getWorkItemsStore?: (req: Request) => WorkItemsStore;
   /** Injectable for tests; production instantiates SupabaseSharePersistenceStore with user authToken. */
   getShareStore?: (req: Request) => SharePersistenceStore;
+  /** Injectable for tests; production instantiates SupabaseIntegrationsStore with user authToken. */
+  getIntegrationsStore?: (req: Request) => IntegrationsStore;
+  /** Injectable for tests; DNS resolver for SSRF verification */
+  dnsResolver?: DnsResolver;
   /** Injectable for tests; public share rate limiter */
   publicShareRateLimiter?: (ip: string) => boolean;
   /** Injectable for tests; Inngest client */
@@ -385,6 +390,8 @@ export function createApp(options: AppOptions = {}): Express {
       getAuditStore: options.getAuditStore,
       getWorkItemsStore: options.getWorkItemsStore,
       getShareStore: options.getShareStore,
+      getIntegrationsStore: options.getIntegrationsStore,
+      dnsResolver: options.dnsResolver,
       analyzeUrl: options.analyzeUrl,
     }),
   );

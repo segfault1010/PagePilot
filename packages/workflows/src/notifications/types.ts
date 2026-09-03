@@ -21,7 +21,7 @@ export interface NotificationPayload {
   previousValue?: string | number | null;
   currentValue?: string | number | null;
   appBaseUrl: string;
-  recipientEmail: string;
+  recipientEmail?: string;
 }
 
 /**

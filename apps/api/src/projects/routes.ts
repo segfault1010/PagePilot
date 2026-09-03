@@ -20,6 +20,8 @@ import { createWorkItemsRouter } from "../work-items/routes.js";
 import type { WorkItemsStore } from "../work-items/work-items-store.js";
 import { createShareRouter } from "../share/routes.js";
 import type { SharePersistenceStore } from "../share/share-store.js";
+import { createIntegrationsRouter } from "../integrations/routes.js";
+import type { IntegrationsStore } from "../integrations/integrations-store.js";
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -35,11 +37,15 @@ function getParam(req: Request, name: string): string {
   return "";
 }
 
+import type { DnsResolver } from "@pagepilot/audit-engine";
+
 export interface ProjectRoutesOptions {
   getStore?: (req: Request) => ProjectsStore;
   getAuditStore?: (req: Request) => AuditPersistenceStore;
   getWorkItemsStore?: (req: Request) => WorkItemsStore;
   getShareStore?: (req: Request) => SharePersistenceStore;
+  getIntegrationsStore?: (req: Request) => IntegrationsStore;
+  dnsResolver?: DnsResolver;
   analyzeUrl?: (url: string) => Promise<AnalysisOutcome>;
 }
 
@@ -542,7 +548,19 @@ export function createProjectsRouter(options: ProjectRoutesOptions = {}): Router
   );
 
   // =========================================================================
-  // 5. Report Share Links (Nested under /:projectId)
+  // 5. External Messaging & Webhook Integrations (Nested under /:projectId/integrations)
+  // =========================================================================
+  router.use(
+    "/:projectId/integrations",
+    createIntegrationsRouter({
+      getStore: options.getIntegrationsStore,
+      getProjectsStore: getStore,
+      dnsResolver: options.dnsResolver,
+    }),
+  );
+
+  // =========================================================================
+  // 6. Report Share Links (Nested under /:projectId)
   // =========================================================================
   router.use(
     "/:projectId",
