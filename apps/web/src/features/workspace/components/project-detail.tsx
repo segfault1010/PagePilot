@@ -13,6 +13,16 @@ import { DeleteConfirmModal } from "./delete-confirm-modal";
 import { listWorkItems } from "../../work-items/api";
 import { WorkItemDetailModal } from "../../work-items/components/work-item-detail-modal";
 import { IntegrationsManager } from "../../integrations/components/integrations-manager";
+import {
+  calculateBusinessExposureTier,
+  calculateBusinessImpactPriority,
+  BUSINESS_IMPACT_METADATA,
+} from "@pagepilot/contracts";
+import type {
+  BusinessImpactPriority,
+  PageAnalyticsSnapshot,
+} from "@pagepilot/contracts";
+import { getPageAnalytics } from "../../analytics/api.js";
 
 export interface ProjectDetailProps {
   project: Project;
@@ -52,6 +62,35 @@ export function ProjectDetail({
   onDeletePage,
 }: ProjectDetailProps) {
   const [activeTab, setActiveTab] = useState<"priorities" | "pages" | "integrations">("priorities");
+
+  // Page Analytics Map for business exposure calculations
+  const [pageAnalyticsMap, setPageAnalyticsMap] = useState<Record<string, PageAnalyticsSnapshot | null>>({});
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadAllAnalytics() {
+      const results: Record<string, PageAnalyticsSnapshot | null> = {};
+      await Promise.all(
+        pages.map(async (page) => {
+          try {
+            const res = await getPageAnalytics(project.id, page.id);
+            if (isMounted) results[page.id] = res.current;
+          } catch {
+            if (isMounted) results[page.id] = null;
+          }
+        }),
+      );
+      if (isMounted) {
+        setPageAnalyticsMap(results);
+      }
+    }
+    if (pages.length > 0) {
+      loadAllAnalytics();
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [project.id, pages]);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingPage, setEditingPage] = useState<MonitoredPage | null>(null);
@@ -129,15 +168,34 @@ export function ProjectDetail({
     }
   };
 
-  // Deterministic Prioritization Calculations
+  // Deterministic Prioritization Calculations using UX Severity + Business Exposure
   const openWorkItems = workItems
     .filter((item) => item.status === "open" || item.status === "in_progress")
     .sort((a, b) => {
-      // 1. Severity rank: high (3) > medium (2) > low (1)
+      // 1. Combined Business Impact Priority
+      const snapA = pageAnalyticsMap[a.monitoredPageId];
+      const snapB = pageAnalyticsMap[b.monitoredPageId];
+      const exposureA = calculateBusinessExposureTier(snapA);
+      const exposureB = calculateBusinessExposureTier(snapB);
+      const priorityA = calculateBusinessImpactPriority(a.severity, exposureA);
+      const priorityB = calculateBusinessImpactPriority(b.severity, exposureB);
+
+      const rankOrder: Record<BusinessImpactPriority, number> = {
+        critical_growth: 4,
+        high: 3,
+        medium: 2,
+        low: 1,
+      };
+
+      const rankDiff = (rankOrder[priorityB] || 0) - (rankOrder[priorityA] || 0);
+      if (rankDiff !== 0) return rankDiff;
+
+      // 2. Fallback to severity if priority levels match
       const rankA = a.severity === "high" ? 3 : a.severity === "medium" ? 2 : 1;
       const rankB = b.severity === "high" ? 3 : b.severity === "medium" ? 2 : 1;
       if (rankB !== rankA) return rankB - rankA;
-      // 2. Recency: updatedAt descending
+
+      // 3. Recency: updatedAt descending
       return b.updatedAt.localeCompare(a.updatedAt);
     });
 
@@ -308,6 +366,10 @@ export function ProjectDetail({
                 {openWorkItems.slice(0, 5).map((item) => {
                   const targetPage = pages.find((p) => p.id === item.monitoredPageId);
                   const assignee = members.find((m) => m.userId === item.assigneeId);
+                  const snap = pageAnalyticsMap[item.monitoredPageId];
+                  const exposure = calculateBusinessExposureTier(snap);
+                  const priority = calculateBusinessImpactPriority(item.severity, exposure);
+                  const priorityMeta = BUSINESS_IMPACT_METADATA[priority];
 
                   return (
                     <div
@@ -336,6 +398,19 @@ export function ProjectDetail({
                           >
                             {item.severity}
                           </span>
+                          {priority === "critical_growth" && (
+                            <span
+                              className="rounded border border-rose-800/60 bg-rose-950 px-1.5 py-0.5 text-[10px] font-bold text-rose-300"
+                              title={priorityMeta.description}
+                            >
+                              Critical Growth
+                            </span>
+                          )}
+                          {exposure === "high_exposure" && snap && (
+                            <span className="rounded border border-sky-800/40 bg-sky-950/60 px-1.5 py-0.5 text-[10px] text-sky-300">
+                              {snap.sessions ? `${Math.round(snap.sessions / 1000)}k sess/mo` : "High Traffic"}
+                            </span>
+                          )}
                           <span className="font-semibold text-neutral-100 text-xs transition group-hover:text-white truncate">
                             {item.title}
                           </span>
@@ -448,6 +523,14 @@ export function ProjectDetail({
                         >
                           {page.status}
                         </span>
+                        {pageAnalyticsMap[page.id] && (
+                          <span className="inline-flex items-center rounded border border-sky-800/40 bg-sky-950/40 px-1.5 py-0.5 text-[10px] text-sky-300">
+                            <span className="mr-1 text-[9px] font-semibold text-sky-400">IMPORTED</span>
+                            {pageAnalyticsMap[page.id]?.conversionRate != null && `${pageAnalyticsMap[page.id]?.conversionRate?.toFixed(1)}% CR`}
+                            {pageAnalyticsMap[page.id]?.conversionRate != null && pageAnalyticsMap[page.id]?.sessions != null && " • "}
+                            {pageAnalyticsMap[page.id]?.sessions != null && `${Math.round(pageAnalyticsMap[page.id]!.sessions! / 1000)}k sess`}
+                          </span>
+                        )}
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-400">

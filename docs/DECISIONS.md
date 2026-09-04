@@ -685,6 +685,55 @@ To establish a dedicated, secure multi-tenant database environment for PagePilot
   - TypeScript build (`tsc -b`) and Vite production bundle build succeed with 0 errors.
   - Secret scan on `apps/web/dist/` confirmed 0 leaks.
 
+## D63 — Page-Level Analytics Ingestion, Schema, Provenance Badge Invariant, and Business Impact Prioritization
+
+- **Problem & Motivation**:
+  - Growth teams and product managers need business and traffic context (sessions, unique visitors, conversions, conversion rate %, bounce rate %, average duration) to prioritize UX recommendations and work items by actual business exposure.
+  - **Critical Invariant**: External metrics must be unequivocally marked as `IMPORTED DATA`. They must never be presented as PagePilot measurements or inferences, and missing data must never be fabricated with fake zeroes.
+  - Overall UX scores (0–100), category scores, findings, recommendations, and historical audit reports must remain completely immutable.
+  - Strict tenant isolation: data must be scoped by organization, project, and page with RLS and RBAC. Cross-tenant queries return 404.
+  - Stale warning if reporting period ended >60 days ago.
+  - Safe error recovery: previous valid snapshot remains active if an update or validation fails.
+- **Architectural Decisions & Implementation**:
+  - **Shared Contract Layer (`packages/contracts/src/analytics-types.ts`)**:
+    - `pageAnalyticsSnapshotSchema`, `createPageAnalyticsSchema`, `updatePageAnalyticsSchema`, `pageAnalyticsResponseSchema`, `pageAnalyticsHistoryResponseSchema`.
+    - Mandatory provenance schema requiring literal `label: "IMPORTED DATA"` and ISO timestamp.
+    - Validation for date ordering (`periodStart <= periodEnd`), metric bounds (`sessions >= 0`, `conversionRate` and `bounceRate` $\in [0, 100]$).
+    - Business exposure tiers:
+      - `high_exposure`: sessions $\ge 20,000$ OR conversions $\ge 500$.
+      - `medium_exposure`: sessions $\ge 5,000$ OR conversions $\ge 100$.
+      - `low_exposure`: sessions $< 5,000$ (with counts $> 0$).
+      - `unknown`: no analytics imported.
+    - Deterministic business impact prioritization mapping (UX severity $\times$ exposure tier):
+      - `critical_growth`: High UX Severity on high exposure.
+      - `high`: High severity on medium exposure OR Medium severity on high exposure.
+      - `medium`: Medium severity on medium exposure OR Low severity on high exposure.
+      - `low`: Low severity on medium/low exposure OR Low exposure.
+      - Never mutates audit scores or report payloads; used solely for queue ranking and visual badge indicators.
+  - **Database Migration (`supabase/migrations/20260905120000_page_analytics.sql`)**:
+    - Table `public.page_analytics_snapshots` with check constraints, foreign keys with `ON DELETE CASCADE`.
+    - `latest_analytics_snapshot_id` foreign key on `monitored_pages` with `ON DELETE SET NULL`.
+    - `ENABLE ROW LEVEL SECURITY` and `FORCE ROW LEVEL SECURITY`.
+    - RLS policies: `owner`, `admin`, `member` insert/update; `owner`, `admin` delete; all organization roles read.
+    - Verified live on Supabase project `qzlffxlmrhqfjeohsnkm`.
+  - **API Architecture (`apps/api/src/analytics/`)**:
+    - `AnalyticsStore` and `SupabaseAnalyticsStore` with atomic update of `latest_analytics_snapshot_id` on `monitored_pages`.
+    - REST routes: `GET /api/projects/:projectId/pages/:pageId/analytics`, `POST`, `DELETE`.
+    - Safe 404 for cross-tenant or mismatched project/page requests.
+    - Preserves previous valid snapshot when validation fails.
+  - **Web Client UI (`apps/web/`)**:
+    - `PageAnalyticsCard`: renders `IMPORTED DATA` badge, metrics grid, source attribution, exposure tier, and stale context warning (>60 days).
+    - `ImportAnalyticsModal`: date validation, number bounds, auto-calculate conversion rate helper, and explicit data provenance notice.
+    - Integrated into `PageDetail` and `ProjectDetail`.
+    - `ProjectDetail`: sorts open work items by business impact priority, renders `Critical Growth` badges and traffic exposure tags.
+- **Verification Evidence**:
+  - Full test suite: 706 tests passing across 75 test files (1 skipped).
+  - 68 focused tests passing across contracts (29), migration schema (19), API (8), UI (12).
+  - Production build (`tsc -b && vite build`) succeeds with 0 errors.
+  - Security audit: 0 secret leaks in `apps/web/dist`.
+  - Live Supabase verification: verified table, column, and 4 RLS policies on dedicated project `qzlffxlmrhqfjeohsnkm`.
+
+
 
 
 

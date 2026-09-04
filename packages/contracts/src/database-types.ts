@@ -178,6 +178,7 @@ export const monitoredPageSchema = z.object({
   tags: z.array(z.string()).default([]),
   latestAuditRunId: z.string().uuid().nullable().optional(),
   latestSuccessfulAuditRunId: z.string().uuid().nullable().optional(),
+  latestAnalyticsSnapshotId: z.string().uuid().nullable().optional(),
   createdAt: isoDateTimeSchema,
   updatedAt: isoDateTimeSchema,
 });

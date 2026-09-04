@@ -79,6 +79,7 @@ import { SupabaseWorkItemsStore } from "../work-items/work-items-store.js";
 import type { SharePersistenceStore } from "../share/share-store.js";
 import { createPublicSharedReportHandler } from "../share/routes.js";
 import type { IntegrationsStore } from "../integrations/integrations-store.js";
+import type { AnalyticsStore } from "../analytics/analytics-store.js";
 
 export interface AppOptions extends AuthMiddlewareOptions {
   /** Injectable for tests; production uses the real safe-fetch pipeline. */
@@ -93,6 +94,8 @@ export interface AppOptions extends AuthMiddlewareOptions {
   getShareStore?: (req: Request) => SharePersistenceStore;
   /** Injectable for tests; production instantiates SupabaseIntegrationsStore with user authToken. */
   getIntegrationsStore?: (req: Request) => IntegrationsStore;
+  /** Injectable for tests; production instantiates SupabaseAnalyticsStore with user authToken. */
+  getAnalyticsStore?: (req: Request) => AnalyticsStore;
   /** Injectable for tests; DNS resolver for SSRF verification */
   dnsResolver?: DnsResolver;
   /** Injectable for tests; public share rate limiter */
@@ -391,6 +394,7 @@ export function createApp(options: AppOptions = {}): Express {
       getWorkItemsStore: options.getWorkItemsStore,
       getShareStore: options.getShareStore,
       getIntegrationsStore: options.getIntegrationsStore,
+      getAnalyticsStore: options.getAnalyticsStore,
       dnsResolver: options.dnsResolver,
       analyzeUrl: options.analyzeUrl,
     }),

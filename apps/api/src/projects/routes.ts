@@ -22,6 +22,8 @@ import { createShareRouter } from "../share/routes.js";
 import type { SharePersistenceStore } from "../share/share-store.js";
 import { createIntegrationsRouter } from "../integrations/routes.js";
 import type { IntegrationsStore } from "../integrations/integrations-store.js";
+import { createAnalyticsRouter } from "../analytics/routes.js";
+import type { AnalyticsStore } from "../analytics/analytics-store.js";
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -45,6 +47,7 @@ export interface ProjectRoutesOptions {
   getWorkItemsStore?: (req: Request) => WorkItemsStore;
   getShareStore?: (req: Request) => SharePersistenceStore;
   getIntegrationsStore?: (req: Request) => IntegrationsStore;
+  getAnalyticsStore?: (req: Request) => AnalyticsStore;
   dnsResolver?: DnsResolver;
   analyzeUrl?: (url: string) => Promise<AnalysisOutcome>;
 }
@@ -568,6 +571,17 @@ export function createProjectsRouter(options: ProjectRoutesOptions = {}): Router
       getProjectsStore: getStore,
       getAuditStore: options.getAuditStore,
       getShareStore: options.getShareStore,
+    }),
+  );
+
+  // =========================================================================
+  // 7. Page Analytics (Nested under /:projectId/pages/:pageId/analytics)
+  // =========================================================================
+  router.use(
+    "/:projectId/pages/:pageId/analytics",
+    createAnalyticsRouter({
+      getStore: options.getAnalyticsStore,
+      getProjectsStore: getStore,
     }),
   );
 

@@ -303,8 +303,36 @@ describe("Supabase Multi-Tenant SQL Migration Validation", () => {
     expect(intSql).toContain("integration_connections_update_policy");
     expect(intSql).toContain("integration_connections_delete_policy");
   });
+
+  it("defines page_analytics_snapshots table with forced RLS, latest pointer on monitored_pages, and period constraints", () => {
+    const analyticsSql = getMigrationSql("20260905120000_page_analytics.sql");
+
+    expect(analyticsSql).toContain("CREATE TABLE IF NOT EXISTS public.page_analytics_snapshots");
+
+    // Foreign keys & cascades
+    expect(analyticsSql).toMatch(/organization_id\s+UUID\s+NOT\s+NULL\s+REFERENCES\s+public\.organizations\(id\)\s+ON\s+DELETE\s+CASCADE/i);
+    expect(analyticsSql).toMatch(/project_id\s+UUID\s+NOT\s+NULL\s+REFERENCES\s+public\.projects\(id\)\s+ON\s+DELETE\s+CASCADE/i);
+    expect(analyticsSql).toMatch(/monitored_page_id\s+UUID\s+NOT\s+NULL\s+REFERENCES\s+public\.monitored_pages\(id\)\s+ON\s+DELETE\s+CASCADE/i);
+
+    // Check constraint for period dates
+    expect(analyticsSql).toContain("CONSTRAINT chk_period_order CHECK (period_start <= period_end)");
+
+    // Pointer on monitored_pages
+    expect(analyticsSql).toContain("ADD COLUMN IF NOT EXISTS latest_analytics_snapshot_id UUID");
+    expect(analyticsSql).toContain("REFERENCES public.page_analytics_snapshots(id) ON DELETE SET NULL");
+
+    // RLS enabled and forced
+    expect(analyticsSql).toContain("ALTER TABLE public.page_analytics_snapshots ENABLE ROW LEVEL SECURITY;");
+    expect(analyticsSql).toContain("ALTER TABLE public.page_analytics_snapshots FORCE ROW LEVEL SECURITY;");
+
+    // RLS policies
+    expect(analyticsSql).toContain("page_analytics_select_policy");
+    expect(analyticsSql).toContain("page_analytics_insert_policy");
+    expect(analyticsSql).toContain("page_analytics_update_policy");
+    expect(analyticsSql).toContain("page_analytics_delete_policy");
+
+    // Proper role gating on insert/update/delete
+    expect(analyticsSql).toContain("public.get_org_role(organization_id) IN ('owner', 'admin', 'member')");
+    expect(analyticsSql).toContain("public.is_org_admin_or_owner(organization_id)");
+  });
 });
-
-
-
-

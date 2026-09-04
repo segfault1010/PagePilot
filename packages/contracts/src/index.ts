@@ -7,5 +7,4 @@ export * from "./events.js";
 export * from "./integration-types.js";
 export * from "./timezone.js";
 export * from "./url-policy.js";
-
-
+export * from "./analytics-types.js";

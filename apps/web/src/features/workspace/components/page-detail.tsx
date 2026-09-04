@@ -1,11 +1,15 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import type {
   AuditHistoryItem,
   MonitoredPage,
+  PageAnalyticsSnapshot,
   Project,
   Role,
 } from "@pagepilot/contracts";
 import { ScoreTrendChart } from "./score-trend-chart.js";
+import { PageAnalyticsCard } from "../../analytics/components/page-analytics-card.js";
+import { ImportAnalyticsModal } from "../../analytics/components/import-analytics-modal.js";
+import { getPageAnalytics, deletePageAnalytics } from "../../analytics/api.js";
 
 export interface PageDetailProps {
   project: Project;
@@ -44,6 +48,34 @@ export function PageDetail({
   const [auditStep, setAuditStep] = useState<"starting" | "analyzing" | null>(null);
   const [currentIdempotencyKey, setCurrentIdempotencyKey] = useState<string | null>(null);
   const [auditError, setAuditError] = useState<string | null>(null);
+
+  // Page Analytics state
+  const [analytics, setAnalytics] = useState<PageAnalyticsSnapshot | null>(null);
+  const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false);
+  const [analyticsError, setAnalyticsError] = useState<string | null>(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+
+  const fetchAnalytics = useCallback(async () => {
+    setIsLoadingAnalytics(true);
+    setAnalyticsError(null);
+    try {
+      const res = await getPageAnalytics(project.id, page.id);
+      setAnalytics(res.current);
+    } catch (err: any) {
+      setAnalyticsError(err?.message || "Failed to load page analytics.");
+    } finally {
+      setIsLoadingAnalytics(false);
+    }
+  }, [project.id, page.id]);
+
+  useEffect(() => {
+    fetchAnalytics();
+  }, [fetchAnalytics]);
+
+  const handleDeleteAnalytics = async (snapshotId: string) => {
+    await deletePageAnalytics(project.id, page.id, snapshotId);
+    await fetchAnalytics();
+  };
 
   const canRunAudit = role !== "viewer";
 
@@ -262,6 +294,16 @@ export function PageDetail({
         </div>
       </div>
 
+      {/* Page Business & Analytics Context */}
+      <PageAnalyticsCard
+        analytics={analytics}
+        isLoading={isLoadingAnalytics}
+        error={analyticsError}
+        role={role}
+        onOpenImportModal={() => setIsImportModalOpen(true)}
+        onDeleteAnalytics={handleDeleteAnalytics}
+      />
+
       {/* UX Score Trend & Category Trajectories Dashboard */}
       {history.length > 0 && (
         <ScoreTrendChart
@@ -403,6 +445,19 @@ export function PageDetail({
           </div>
         )}
       </div>
+
+      {/* Import Analytics Modal */}
+      <ImportAnalyticsModal
+        projectId={project.id}
+        pageId={page.id}
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onSuccess={(newSnap) => {
+          setAnalytics(newSnap);
+          setIsImportModalOpen(false);
+        }}
+        initialData={analytics}
+      />
     </div>
   );
 }

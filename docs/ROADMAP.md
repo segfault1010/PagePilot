@@ -246,20 +246,21 @@ This roadmap defines the evolution of PagePilot from a single-project MVP into a
 ---
 
 ### Milestone 5: Integrations & Measurement
-- **Status:** `Active`
+- **Status:** `Complete & Verified`
 - **Product Outcome:** Connect PagePilot findings to team messaging tools and analytics context.
 - **Dependencies:** Milestone 3, Milestone 4.
 - **Tasks & Execution Plan:**
-  - **Task 5.1 — Slack / Webhook Integration Foundation & Alert Subscriptions:** `Complete` (Database schema `integration_connections`, forced RLS, AES-256-GCM authenticated credential encryption, secret masking, outbound SSRF destination protection, HMAC-SHA256 signing, multi-channel Slack & Webhook Inngest alert dispatch with idempotent delivery keys).
-  - **Task 5.2 — Integrations Management UI & Test Ping Interface:** `Complete` (Integrations management UI in @pagepilot/web with Slack & Webhook forms, project-scoped vs org-wide scope handling, masked credentials display, role-gated mutations for owner/admin, test ping action with latency & status feedback, SSRF BLOCKED_DESTINATION error handling, filtering, and 18 UI/client tests).
+  - **Task 5.1 — Slack / Webhook Integration Foundation & Alert Subscriptions:** `Complete & Verified` (Database schema `integration_connections`, forced RLS, AES-256-GCM authenticated credential encryption, secret masking, outbound SSRF destination protection, HMAC-SHA256 signing, multi-channel Slack & Webhook Inngest alert dispatch with idempotent delivery keys).
+  - **Task 5.2 — Integrations Management UI & Test Ping Interface:** `Complete & Verified` (Integrations management UI in @pagepilot/web with Slack & Webhook forms, project-scoped vs org-wide scope handling, masked credentials display, role-gated mutations for owner/admin, test ping action with latency & status feedback, SSRF BLOCKED_DESTINATION error handling, filtering, and 18 UI/client tests).
   - **Task 5.3 — CSV Export for Findings & Recommendation Backlogs:** `Complete & Verified` (RFC 4180-compliant serialization engine with UTF-8 BOM, spreadsheet formula-injection defense against `=`, `+`, `-`, `@`, `\t`, `\r`, `%`, 18-column Work Item and 13-column Audit Report streaming schemas, memory-safe batch pagination in API store, viewer-permissive export RBAC, cross-tenant 404 security, Web UI Export buttons with loading/error states in WorkItemsBacklog and HistoricalReportView, and 34 dedicated tests across contracts, API, and UI).
-  - **Task 5.4 — Page-Level Analytics Import & Context Visualization:** `Planned` (Analytics metric ingestion, schema versioning, labeled business context separate from UX inference).
+  - **Task 5.4 — Page-Level Analytics Import & Context Visualization:** `Complete & Verified` (Page-level business and traffic analytics ingestion, `public.page_analytics_snapshots` table with forced RLS and check constraints, mandatory `[IMPORTED DATA]` provenance label invariant, deterministic business exposure tiers and UX severity business-impact prioritization, immutable historical audit preservation, atomic latest snapshot pointer maintenance, stale context warning banner after 60 days, accessible UI components in `apps/web` (`PageAnalyticsCard`, `ImportAnalyticsModal`, `ProjectDetail` impact badges), and 68 focused tests across contracts, schema, API, and UI).
 - **Explicitly Defer:** Autonomous page edits, automatic A/B testing execution.
 - **Acceptance Criteria:**
   - Inbound and outbound webhook signatures verified.
   - Integration credentials encrypted at rest with AES-256-GCM and never returned to the client.
   - SSRF destination protection strictly enforced on all outbound webhooks.
   - Multi-channel delivery is idempotent and preserves previous successful audit reports on failure.
+  - Every external analytics metric displayed is explicitly badged as `IMPORTED DATA` and never alters historical audit reports or UX scores.
 
 ---
 

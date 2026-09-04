@@ -104,6 +104,8 @@ export function rowToMonitoredPage(row: any): MonitoredPage {
     ownerId: row.owner_id ?? row.ownerId ?? null,
     tags: Array.isArray(row.tags) ? row.tags : [],
     latestAuditRunId: row.latest_audit_run_id ?? row.latestAuditRunId ?? null,
+    latestSuccessfulAuditRunId: row.latest_successful_audit_run_id ?? row.latestSuccessfulAuditRunId ?? null,
+    latestAnalyticsSnapshotId: row.latest_analytics_snapshot_id ?? row.latestAnalyticsSnapshotId ?? null,
     createdAt: toNormalizedIsoDate(row.created_at ?? row.createdAt),
     updatedAt: toNormalizedIsoDate(row.updated_at ?? row.updatedAt),
   };
