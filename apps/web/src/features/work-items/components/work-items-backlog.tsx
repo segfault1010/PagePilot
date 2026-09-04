@@ -24,7 +24,9 @@ import {
   WORK_ITEM_STATUS_STYLES,
 } from "../work-items-labels";
 import {
+  exportWorkItemsCsv,
   listWorkItems,
+  triggerBlobDownload,
   updateWorkItem,
   WorkItemsApiClientError,
 } from "../api.js";
@@ -87,6 +89,7 @@ export function WorkItemsBacklog({
   // Modal states
   const [selectedWorkItemId, setSelectedWorkItemId] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   // Fetch work items for active project
   const fetchWorkItems = useCallback(async () => {
@@ -219,6 +222,45 @@ export function WorkItemsBacklog({
 
   const selectedWorkItem = workItems.find((w) => w.id === selectedWorkItemId);
 
+  const handleExportCsv = async () => {
+    if (!activeProjectId) return;
+    setIsExporting(true);
+    setErrorMessage(null);
+    try {
+      const blob = await exportWorkItemsCsv(activeProjectId, {
+        status: statusFilter !== "all" ? (statusFilter as WorkItemStatus) : undefined,
+        assigneeId:
+          assigneeFilter !== "all" && assigneeFilter !== "unassigned"
+            ? assigneeFilter
+            : undefined,
+        pageId: pageFilter !== "all" ? pageFilter : undefined,
+        sourceType:
+          sourceTypeFilter !== "all" ? (sourceTypeFilter as WorkItemSourceType) : undefined,
+        severity:
+          severityFilter !== "all" ? (severityFilter as Severity) : undefined,
+        category:
+          categoryFilter !== "all" ? (categoryFilter as AuditCategory) : undefined,
+      });
+
+      const activeProject = projects.find((p) => p.id === activeProjectId);
+      const slug = (activeProject?.name || "backlog")
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]/g, "-")
+        .replace(/-+/g, "-")
+        .slice(0, 40);
+      const dateStr = new Date().toISOString().split("T")[0];
+      triggerBlobDownload(blob, `pagepilot-work-items-${slug}-${dateStr}.csv`);
+    } catch (err: any) {
+      setErrorMessage(
+        err instanceof WorkItemsApiClientError
+          ? err.message
+          : "Failed to export work items CSV.",
+      );
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Top Header & Project Scope */}
@@ -252,6 +294,40 @@ export function WorkItemsBacklog({
                 ))}
               </select>
             </div>
+          )}
+
+          {activeProjectId && (
+            <button
+              type="button"
+              onClick={handleExportCsv}
+              disabled={isExporting}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-800 bg-neutral-900 px-3.5 py-2 text-xs font-semibold text-neutral-200 transition hover:bg-neutral-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 disabled:opacity-50"
+              title="Export work items backlog to CSV"
+            >
+              {isExporting ? (
+                <>
+                  <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-neutral-400 border-t-white" />
+                  <span>Exporting...</span>
+                </>
+              ) : (
+                <>
+                  <svg
+                    className="h-3.5 w-3.5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                    />
+                  </svg>
+                  <span>Export CSV</span>
+                </>
+              )}
+            </button>
           )}
 
           {!isViewer && activeProjectId && (

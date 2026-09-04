@@ -3,9 +3,14 @@ import type { Request, Response } from "express";
 import {
   API_ERROR_CODES,
   createWorkItemSchema,
+  serializeCsvRow,
+  serializeWorkItemCsvRow,
   updateWorkItemSchema,
+  UTF8_BOM,
+  WORK_ITEM_CSV_HEADERS,
   workItemFiltersSchema,
 } from "@pagepilot/contracts";
+
 import { requireOrgRole } from "../auth/middleware.js";
 import {
   DuplicateResourceError,
@@ -203,6 +208,79 @@ export function createWorkItemsRouter(
           API_ERROR_CODES.internalError,
           "Failed to list work items.",
         );
+      }
+    },
+  );
+
+  // =========================================================================
+  // GET /api/projects/:projectId/work-items/export (owner, admin, member, viewer)
+  // =========================================================================
+  router.get(
+    "/export",
+    requireOrgRole(["owner", "admin", "member", "viewer"]),
+    async (req: Request, res: Response): Promise<void> => {
+      const projectId = getParam(req, "projectId");
+      if (!projectId || !isValidUuid(projectId)) {
+        sendError(res, 404, API_ERROR_CODES.notFound, "Project not found.");
+        return;
+      }
+
+      const orgId = req.workspace!.organization.id;
+      const projectsStore = getProjectsStore(req);
+      const project = await projectsStore.getProjectById(orgId, projectId);
+      if (!project) {
+        sendError(res, 404, API_ERROR_CODES.notFound, "Project not found.");
+        return;
+      }
+
+      const filterParse = workItemFiltersSchema.safeParse(req.query);
+      if (!filterParse.success) {
+        sendError(
+          res,
+          400,
+          API_ERROR_CODES.badRequest,
+          filterParse.error.issues[0]?.message || "Invalid filter parameters.",
+        );
+        return;
+      }
+
+      try {
+        const store = getStore(req);
+        const slug = (project.name || "project")
+          .toLowerCase()
+          .replace(/[^a-z0-9_-]/g, "-")
+          .replace(/-+/g, "-")
+          .slice(0, 40);
+        const dateStr = new Date().toISOString().split("T")[0];
+        const filename = `pagepilot-work-items-${slug}-${dateStr}.csv`;
+
+        res.setHeader("Content-Type", "text/csv; charset=utf-8");
+        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+        res.setHeader("Cache-Control", "no-store");
+
+        // Write UTF-8 BOM and CSV header row
+        res.write(UTF8_BOM + serializeCsvRow([...WORK_ITEM_CSV_HEADERS]));
+
+        // Stream work items batch by batch
+        await store.exportWorkItems(orgId, projectId, filterParse.data, (batch) => {
+          for (const item of batch) {
+            res.write(serializeWorkItemCsvRow(item));
+          }
+        });
+
+        res.end();
+      } catch (err: any) {
+        console.error("[work_items] export error:", err);
+        if (!res.headersSent) {
+          sendError(
+            res,
+            500,
+            API_ERROR_CODES.internalError,
+            "Failed to export work items.",
+          );
+        } else {
+          res.end();
+        }
       }
     },
   );

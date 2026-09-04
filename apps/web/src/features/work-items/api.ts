@@ -178,3 +178,67 @@ export async function listOrganizationMembers(
   );
   return organizationMemberListResponseSchema.parse(data);
 }
+
+// ---------------------------------------------------------------------------
+// CSV Export Client
+// ---------------------------------------------------------------------------
+
+export async function exportWorkItemsCsv(
+  projectId: string,
+  filters?: WorkItemFilters,
+  options?: RequestOptions,
+): Promise<Blob> {
+  const token = await getActiveAccessToken(options?.token);
+  const baseUrl = options?.baseUrl ?? "";
+  const params = new URLSearchParams();
+
+  if (filters?.pageId) params.set("pageId", filters.pageId);
+  if (filters?.status) params.set("status", filters.status);
+  if (filters?.assigneeId) params.set("assigneeId", filters.assigneeId);
+  if (filters?.sourceType) params.set("sourceType", filters.sourceType);
+  if (filters?.category) params.set("category", filters.category);
+  if (filters?.severity) params.set("severity", filters.severity);
+
+  const qs = params.toString();
+  const url = `${baseUrl}/api/projects/${projectId}/work-items/export${qs ? `?${qs}` : ""}`;
+
+  const headers = new Headers();
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  const res = await fetch(url, {
+    method: "GET",
+    headers,
+  });
+
+  if (!res.ok) {
+    const errorBody = await res.json().catch(() => null);
+    const code =
+      errorBody?.error?.code ||
+      (res.status === 401
+        ? "UNAUTHENTICATED"
+        : res.status === 403
+          ? "FORBIDDEN"
+          : "API_ERROR");
+    const message = errorBody?.error?.message || `Failed to export CSV (${res.status})`;
+    throw new WorkItemsApiClientError(res.status, code, message);
+  }
+
+  return res.blob();
+}
+
+export function triggerBlobDownload(blob: Blob, filename: string): void {
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.style.display = "none";
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  }, 100);
+}
+

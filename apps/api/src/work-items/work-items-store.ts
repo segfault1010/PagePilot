@@ -8,6 +8,7 @@ import type {
   UpdateWorkItemInput,
   WorkItem,
   WorkItemActivity,
+  WorkItemExportRow,
   WorkItemFilters,
   WorkItemSourceType,
 } from "@pagepilot/contracts";
@@ -55,6 +56,13 @@ export interface WorkItemsStore {
     filters?: WorkItemFilters,
   ): Promise<{ workItems: WorkItem[]; total: number }>;
 
+  exportWorkItems(
+    orgId: string,
+    projectId: string,
+    filters?: WorkItemFilters,
+    onBatch?: (batch: WorkItemExportRow[]) => Promise<void> | void,
+  ): Promise<WorkItemExportRow[]>;
+
   getWorkItemById(
     orgId: string,
     projectId: string,
@@ -95,6 +103,7 @@ export interface WorkItemsStore {
 
   listOrganizationMembers(orgId: string): Promise<OrganizationMember[]>;
 }
+
 
 function toNormalizedIsoDate(val: any): string | null {
   if (!val) return null;
@@ -347,6 +356,100 @@ export class SupabaseWorkItemsStore implements WorkItemsStore {
       workItems: data.map(mapWorkItemRow),
       total: count ?? data.length,
     };
+  }
+
+  async exportWorkItems(
+    orgId: string,
+    projectId: string,
+    filters?: WorkItemFilters,
+    onBatch?: (batch: WorkItemExportRow[]) => Promise<void> | void,
+  ): Promise<WorkItemExportRow[]> {
+    // 1. Preload monitored pages map (id -> canonical_url)
+    const { data: pageRows } = await this.client
+      .from("monitored_pages")
+      .select("id, canonical_url")
+      .eq("organization_id", orgId)
+      .eq("project_id", projectId);
+
+    const pageMap = new Map<string, string>();
+    if (pageRows) {
+      for (const p of pageRows) {
+        pageMap.set(p.id, p.canonical_url);
+      }
+    }
+
+    // 2. Preload member emails map (user_id -> email)
+    const members = await this.listOrganizationMembers(orgId);
+    const memberMap = new Map<string, string>();
+    for (const m of members) {
+      memberMap.set(m.userId, m.email);
+    }
+
+    // 3. Batch paginate work items query
+    const BATCH_SIZE = 100;
+    let offset = 0;
+    const allExportRows: WorkItemExportRow[] = [];
+
+    while (true) {
+      let query = this.client
+        .from("work_items")
+        .select("*")
+        .eq("organization_id", orgId)
+        .eq("project_id", projectId);
+
+      if (filters?.pageId) {
+        query = query.eq("monitored_page_id", filters.pageId);
+      }
+      if (filters?.status) {
+        query = query.eq("status", filters.status);
+      }
+      if (filters?.assigneeId) {
+        query = query.eq("assignee_id", filters.assigneeId);
+      }
+      if (filters?.sourceType) {
+        query = query.eq("source_type", filters.sourceType);
+      }
+      if (filters?.category) {
+        query = query.eq("category", filters.category);
+      }
+      if (filters?.severity) {
+        query = query.eq("severity", filters.severity);
+      }
+
+      query = query
+        .order("created_at", { ascending: false })
+        .range(offset, offset + BATCH_SIZE - 1);
+
+      const { data, error } = await query;
+      if (error || !data || data.length === 0) {
+        break;
+      }
+
+      const batchRows: WorkItemExportRow[] = data.map((row: any) => {
+        const item = mapWorkItemRow(row);
+        return {
+          ...item,
+          pageUrl: row.monitored_page_id
+            ? pageMap.get(row.monitored_page_id) || null
+            : null,
+          assigneeEmail: row.assignee_id
+            ? memberMap.get(row.assignee_id) || null
+            : null,
+        };
+      });
+
+      if (onBatch) {
+        await onBatch(batchRows);
+      }
+      allExportRows.push(...batchRows);
+
+      if (data.length < BATCH_SIZE) {
+        break;
+      }
+      offset += BATCH_SIZE;
+    }
+
+    return allExportRows;
   }
 
   async getWorkItemById(

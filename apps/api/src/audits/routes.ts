@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import {
   API_ERROR_CODES,
+  exportAuditReportToCsv,
   triggerAuditRequestSchema,
 } from "@pagepilot/contracts";
 import { computeAuditDiff } from "@pagepilot/audit-engine";
@@ -454,6 +455,97 @@ export function createAuditsRouter(options: AuditRoutesOptions = {}): Router {
           500,
           API_ERROR_CODES.internalError,
           "Failed to retrieve audit report.",
+        );
+      }
+    },
+  );
+
+  // 6. GET /api/projects/:projectId/pages/:pageId/audits/:auditRunId/export (owner, admin, member, viewer)
+  router.get(
+    "/:auditRunId/export",
+    requireOrgRole(["owner", "admin", "member", "viewer"]),
+    async (req: Request, res: Response): Promise<void> => {
+      const projectId = getParam(req, "projectId");
+      const pageId = getParam(req, "pageId");
+      const auditRunId = getParam(req, "auditRunId");
+      if (
+        !projectId ||
+        !isValidUuid(projectId) ||
+        !pageId ||
+        !isValidUuid(pageId) ||
+        !auditRunId ||
+        !isValidUuid(auditRunId)
+      ) {
+        sendError(
+          res,
+          404,
+          API_ERROR_CODES.notFound,
+          "Audit report not found.",
+        );
+        return;
+      }
+
+      const orgId = req.workspace!.organization.id;
+      const projectsStore = getProjectsStore(req);
+      const auditStore = getAuditStore(req);
+
+      // Verify page belongs to project/org
+      const page = await projectsStore.getMonitoredPageById(
+        orgId,
+        projectId,
+        pageId,
+      );
+      if (!page) {
+        sendError(res, 404, API_ERROR_CODES.notFound, "Monitored page not found.");
+        return;
+      }
+
+      try {
+        const persisted = await auditStore.getAuditReportByRunId(
+          orgId,
+          projectId,
+          pageId,
+          auditRunId,
+        );
+        if (!persisted || persisted.auditRun.status !== "completed") {
+          sendError(
+            res,
+            404,
+            API_ERROR_CODES.notFound,
+            "Audit report not found or is not completed.",
+          );
+          return;
+        }
+
+        const csv = exportAuditReportToCsv(persisted.report.reportPayload, {
+          targetUrl: page.canonicalUrl,
+          auditRunId: persisted.auditRun.id,
+          analyzedAt: persisted.auditRun.completedAt || persisted.auditRun.createdAt,
+        });
+
+        const domainSlug = (page.canonicalUrl || "page")
+          .replace(/^https?:\/\//, "")
+          .toLowerCase()
+          .replace(/[^a-z0-9_-]/g, "-")
+          .replace(/-+/g, "-")
+          .slice(0, 40);
+        const dateStr = new Date(persisted.auditRun.completedAt || persisted.auditRun.createdAt)
+          .toISOString()
+          .split("T")[0];
+        const filename = `pagepilot-audit-${domainSlug}-${dateStr}.csv`;
+
+        res.setHeader("Content-Type", "text/csv; charset=utf-8");
+        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+        res.setHeader("Cache-Control", "no-store");
+
+        res.status(200).send(csv);
+      } catch (err: any) {
+        console.error("[audits] export audit report error:", err);
+        sendError(
+          res,
+          500,
+          API_ERROR_CODES.internalError,
+          "Failed to export audit report.",
         );
       }
     },

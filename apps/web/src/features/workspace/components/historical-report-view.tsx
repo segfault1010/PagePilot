@@ -14,6 +14,9 @@ import {
   type PrefillSourceData,
 } from "../../work-items/components/create-work-item-modal";
 import { ShareReportModal } from "../../share/components/share-report-modal";
+import { exportAuditReportCsv } from "../../audits/api.js";
+import { triggerBlobDownload } from "../../work-items/api.js";
+
 
 export interface HistoricalReportViewProps {
   persistedReport: PersistedAuditReportResponse;
@@ -44,6 +47,8 @@ export function HistoricalReportView({
 
   const [prefillData, setPrefillData] = useState<PrefillSourceData | null>(null);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const handleTrackFinding = (f: Finding) => {
     if (isViewer) return;
@@ -91,6 +96,32 @@ export function HistoricalReportView({
     }
   };
 
+  const handleExportCsv = async () => {
+    setIsExporting(true);
+    setExportError(null);
+    try {
+      const blob = await exportAuditReportCsv(
+        auditRun.projectId,
+        auditRun.monitoredPageId,
+        auditRun.id,
+      );
+      const domainSlug = (auditRun.targetUrl || "page")
+        .replace(/^https?:\/\//, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]/g, "-")
+        .replace(/-+/g, "-")
+        .slice(0, 40);
+      const dateStr = new Date(auditRun.completedAt || auditRun.createdAt)
+        .toISOString()
+        .split("T")[0];
+      triggerBlobDownload(blob, `pagepilot-audit-${domainSlug}-${dateStr}.csv`);
+    } catch (err: any) {
+      setExportError(err?.message || "Failed to export audit report CSV.");
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Top Banner & Navigation */}
@@ -130,6 +161,37 @@ export function HistoricalReportView({
           )}
           <button
             type="button"
+            onClick={handleExportCsv}
+            disabled={isExporting}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-neutral-700 hover:border-neutral-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 disabled:opacity-50"
+            title="Export audit findings and recommendations to CSV"
+          >
+            {isExporting ? (
+              <>
+                <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-neutral-400 border-t-white" />
+                <span>Exporting...</span>
+              </>
+            ) : (
+              <>
+                <svg
+                  className="h-3.5 w-3.5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                  />
+                </svg>
+                <span>Export CSV</span>
+              </>
+            )}
+          </button>
+          <button
+            type="button"
             onClick={() => setShowShareModal(true)}
             className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-neutral-700 hover:border-neutral-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
           >
@@ -156,6 +218,23 @@ export function HistoricalReportView({
           </span>
         </div>
       </div>
+
+      {/* Export Error Alert */}
+      {exportError && (
+        <div
+          role="alert"
+          className="flex items-center justify-between rounded-xl border border-red-900/50 bg-red-950/40 p-4 text-xs text-red-300"
+        >
+          <span>{exportError}</span>
+          <button
+            type="button"
+            onClick={() => setExportError(null)}
+            className="text-red-400 hover:text-red-200 ml-2 font-medium"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Render the verified ReportView with optional work-item tracking */}
       <div className="fade-rise">

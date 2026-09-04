@@ -185,3 +185,45 @@ export async function getAuditDiff(
   return auditDiffResponseSchema.parse(json);
 }
 
+/**
+ * Downloads an audit report CSV as a Blob.
+ */
+export async function exportAuditReportCsv(
+  projectId: string,
+  pageId: string,
+  auditRunId: string,
+  options: AuditRequestOptions = {},
+): Promise<Blob> {
+  const token = await getActiveAccessToken(options.token);
+  const baseUrl = options.baseUrl ?? "";
+  const url = `${baseUrl}/api/projects/${projectId}/pages/${pageId}/audits/${auditRunId}/export`;
+
+  const headers = new Headers();
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  const res = await fetch(url, {
+    method: "GET",
+    headers,
+  });
+
+  if (!res.ok) {
+    let code = "UNKNOWN_ERROR";
+    let message = `Export failed with status ${res.status}`;
+    try {
+      const errJson = await res.json();
+      if (errJson?.error) {
+        code = errJson.error.code ?? code;
+        message = errJson.error.message ?? message;
+      }
+    } catch {
+      // Ignored
+    }
+    throw new AuditApiClientError(res.status, code, message);
+  }
+
+  return res.blob();
+}
+
+

@@ -11,6 +11,7 @@ import type {
   UpdateWorkItemInput,
   WorkItem,
   WorkItemActivity,
+  WorkItemExportRow,
   WorkItemFilters,
   WorkItemSourceType,
 } from "@pagepilot/contracts";
@@ -315,6 +316,24 @@ class InMemoryWorkItemsStore implements WorkItemsStore {
     const paginated = items.slice(offset, offset + limit);
 
     return { workItems: paginated, total };
+  }
+
+  async exportWorkItems(
+    orgId: string,
+    projectId: string,
+    filters?: WorkItemFilters,
+    onBatch?: (batch: WorkItemExportRow[]) => Promise<void> | void,
+  ): Promise<WorkItemExportRow[]> {
+    const listResult = await this.listWorkItems(orgId, projectId, filters);
+    const rows: WorkItemExportRow[] = listResult.workItems.map((w) => ({
+      ...w,
+      pageUrl: `https://example.com/page/${w.monitoredPageId}`,
+      assigneeEmail: w.assigneeId ? "member@example.com" : null,
+    }));
+    if (onBatch) {
+      await onBatch(rows);
+    }
+    return rows;
   }
 
   async getWorkItemById(

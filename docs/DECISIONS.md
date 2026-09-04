@@ -643,5 +643,48 @@ To establish a dedicated, secure multi-tenant database environment for PagePilot
   - Web UI test suite: 18 integration tests pass across `integrations-api-client.test.ts` (7 tests) and `integrations-ui.test.tsx` (11 tests).
   - TypeScript build (`tsc -b`) and Vite production bundle build succeed with 0 errors.
 
+## D62 — CSV Export Engine, RFC 4180 Streaming, Formula Injection Protection, and Viewer Read Access
+
+- **Problem & Motivation**:
+  - Growth teams and UX analysts need to export audit findings, recommendations, and prioritized work items into spreadsheet tools (Microsoft Excel, Google Sheets) and project tracking pipelines.
+  - Exporting data to spreadsheet software presents security risks (Formula Injection / CSV Injection attacks) where unvalidated user input starting with `=`, `+`, `-`, `@`, `\t`, `\r`, `%` can trigger formula execution or malicious commands in spreadsheet processors.
+  - Large work item backlogs can cause Node.js server memory bloat if buffered in a single gigantic string.
+  - Excel default encoding on Windows frequently mishandles UTF-8 text unless a Byte Order Mark (`\uFEFF`) is present.
+  - Must preserve historical audit report immutability, enforce strict tenant isolation (cross-tenant 404), and ensure the `viewer` role can read and export backlogs without mutation rights.
+- **Architectural Decisions & Implementation**:
+  - **Shared Contract Engine (`packages/contracts/src/csv.ts`)**:
+    - RFC 4180 serializer quoting cells containing commas, double quotes (`""`), or newlines (`\n`, `\r`).
+    - UTF-8 Byte Order Mark (`\uFEFF`) prepended to every export, guaranteeing seamless double-click opening in Excel and Sheets.
+    - Comprehensive spreadsheet formula injection defense (`sanitizeCsvValue`): automatically prepends a single quote (`'`) to any value starting with `=`, `+`, `-`, `@`, `\t`, `\r`, or `%`, neutralizing formula execution while preserving legibility.
+    - Deterministic 18-column Work Item Backlog format (`WORK_ITEMS_CSV_COLUMNS`):
+      `Work Item ID`, `Project ID`, `Page ID`, `Page URL`, `Page Name`, `Type`, `Source Finding / Rec ID`, `Title`, `Description`, `Category`, `Severity`, `Effort`, `Status`, `Assignee Name`, `Assignee Email`, `Resolution Rationale`, `Created At (UTC)`, `Updated At (UTC)`.
+    - Deterministic 13-column Audit Report format (`AUDIT_REPORT_CSV_COLUMNS`):
+      `Audit Run ID`, `Page ID`, `Page URL`, `Audit Completed At (UTC)`, `Overall Score`, `Item Type`, `Item ID`, `Title`, `Category`, `Severity / Priority`, `Impact / Effort`, `Confidence`, `Description`.
+    - Format helpers for categories, severities, effort, and ISO 8601 UTC date formatting.
+  - **API Streaming & Memory-Safe Batch Pagination (`apps/api/`)**:
+    - Added `exportWorkItems` to `WorkItemsStore` querying items in 250-item batches via database pagination (`.range(from, to)`).
+    - Page URLs and assignee profiles are looked up and mapped in-memory without expensive N+1 queries.
+    - Route `GET /api/projects/:projectId/work-items/export`: streams batch rows directly to the Express response stream with `res.write()`, keeping memory consumption constant regardless of backlog size.
+    - Route `GET /api/projects/:projectId/pages/:pageId/audits/:auditRunId/export`: generates a CSV representation of findings and recommendations from the immutable report payload.
+    - HTTP response headers enforce security: `Content-Type: text/csv; charset=utf-8`, `Content-Disposition: attachment; filename="..."`, and `Cache-Control: no-store, no-cache, must-revalidate`.
+  - **Role-Based Access Control & Tenant Boundary**:
+    - `requireOrgRole(["owner", "admin", "member", "viewer"])` applied to both export endpoints. The `viewer` role has full read and export permissions without write/mutation permissions.
+    - Cross-tenant requests targeting unowned projects or audits return uniform 404 Not Found responses.
+  - **Historical Audit Immutability**:
+    - The report export endpoint acts as a read-only projection of the stored `audit_reports.report_payload` and does not mutate historical snapshots, scores, or metadata.
+  - **Web Client UI Integration (`apps/web/`)**:
+    - `exportWorkItemsCsv` and `exportAuditReportCsv` in feature API clients leverage `triggerBlobDownload` with temporary blob URLs and cleanup.
+    - `<WorkItemsBacklog />`: "Export CSV" button in the header toolbar passes active filter parameters (status, severity, assignee, page, category, search) to export filtered subsets, with loading spinner and inline error banner.
+    - `<HistoricalReportView />`: "Export CSV" button in the action bar with loading spinner and inline error alert.
+- **Verification Evidence**:
+  - Full test suite: 656 tests passing across 72 test files (0 failures, 1 skipped).
+  - 34 dedicated tests:
+    - `packages/contracts/tests/csv.test.ts`: 17 tests (escaping, formula injection neutralization, BOM, column schemas, data formatting).
+    - `apps/api/tests/csv-export.test.ts`: 11 tests (auth, viewer export, cross-tenant 404, formula neutralization, filter queries, streaming).
+    - `apps/web/tests/csv-export-ui.test.tsx`: 6 tests (WorkItemsBacklog export button, active filter propagation, loading/error states, HistoricalReportView export button).
+  - TypeScript build (`tsc -b`) and Vite production bundle build succeed with 0 errors.
+  - Secret scan on `apps/web/dist/` confirmed 0 leaks.
+
+
 
 
