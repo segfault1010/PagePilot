@@ -733,6 +733,231 @@ To establish a dedicated, secure multi-tenant database environment for PagePilot
   - Security audit: 0 secret leaks in `apps/web/dist`.
   - Live Supabase verification: verified table, column, and 4 RLS policies on dedicated project `qzlffxlmrhqfjeohsnkm`.
 
+## D64 — Playwright Screenshot Capture Foundation, Browser SSRF Request Interception, Dual-Viewport Bounded Capture, Private Object Storage, and Isolated Workflow Step (Milestone 6 — Task 6.1)
+
+- **Problem & Motivation**:
+  - The static-HTML analysis engine provides fast, deterministic, security-bounded audits, but growth teams also need visual proof of how landing pages render across viewports (desktop and mobile) to verify above-the-fold layout, typography, and responsive rendering.
+  - Introducing real browser rendering introduces serious SSRF risks (DNS rebinding, local network probing, cloud metadata access, malicious redirects, cross-origin subresources) and operational risks (headless browser crashes, slow renders, memory leaks, high storage costs).
+  - **Critical Invariants**:
+    1. Static HTML analysis remains the primary baseline; browser capture never replaces safe static fetch.
+    2. Static audit scoring, deterministic signals, and categories are NOT modified.
+    3. Anonymous `POST /api/analyze` remains 100% static HTML without browser capture.
+    4. Screenshots are private customer data stored in a private Supabase Storage bucket (`audit-screenshots`) with forced RLS and accessed exclusively via 15-minute ephemeral signed URLs.
+    5. Screenshot failures MUST NEVER fail, invalidate, or roll back an already-persisted static audit report.
+    6. Browser execution remains strictly server-side with guaranteed `try/finally` resource cleanup.
+    7. Initial URLs, redirects, and all intercepted browser requests must strictly enforce HTTP/HTTPS, ports 80/443, all-record DNS validation, and public routable IP policy.
+- **Architectural Decisions & Implementation**:
+  - **Shared Contracts (`packages/contracts/src/screenshot-types.ts`)**:
+    - Defined `VISUAL_ANALYSIS_SCHEMA_VERSION = "1.0.0"`.
+    - Viewport dimensions: Desktop `1280x800` (`DESKTOP_VIEWPORT`), Mobile `375x812` (`MOBILE_VIEWPORT`).
+    - Constraints: `MAX_CAPTURE_HEIGHT = 4000` px, `MAX_SCREENSHOT_BYTES = 5 * 1024 * 1024` (5MB), `SIGNED_URL_EXPIRY_SECONDS = 900` (15 minutes).
+    - Bucket constant: `SCREENSHOT_STORAGE_BUCKET = "audit-screenshots"`.
+    - Deterministic storage key generator: `buildScreenshotStoragePath(orgId, projectId, pageId, runId, deviceType, captureType, format)` producing `orgs/:orgId/projects/:projectId/pages/:pageId/audits/:runId/:deviceType-:captureType.:format`.
+    - Zod schemas: `auditScreenshotMetadataSchema`, `auditScreenshotsResponseSchema`, `signedScreenshotUrlSchema`.
+  - **Browser SSRF Defense & Pre-Navigation Interception (`packages/audit-engine/src/browser/browser-security.ts`)**:
+    - `validateTargetUrl(targetUrl, resolver)`: checks scheme (`http:`/`https:`), port (80/443 only), absence of credentials/userinfo, and resolves all DNS records. Rejects private, loopback, link-local, cloud metadata (`169.254.169.254`), and multi-record mixed DNS responses via `isPubliclyRoutableAddress`.
+    - `createBrowserSsrfGuard({ dnsResolver })`: attaches to `page.route('**/*')`. Intercepts every outgoing browser request (navigation, redirects, subresource scripts/stylesheets/images/fonts/fetch). Verifies target URL and all-record DNS before allowing request to continue; aborts blocked destinations immediately with `'blockedbyclient'`.
+  - **Sandboxed Headless Chromium Provider (`packages/audit-engine/src/browser/playwright-provider.ts`)**:
+    - `PlaywrightBrowserCaptureProvider` launches hardened Chromium with sandbox and GPU flags (`--no-sandbox`, `--disable-setuid-sandbox`, `--disable-dev-shm-usage`, `--disable-gpu`, `--disable-background-networking`).
+    - Graceful system browser fallback: if dedicated Playwright headless shell binaries are not installed, automatically falls back to installed Google Chrome or Microsoft Edge binaries.
+    - Captures desktop (1280x800) and mobile (375x812 with iPhone UA) in isolation.
+    - Dismisses dialogs and popups automatically.
+    - Capped at 4000px height for full-page captures.
+    - Uses Chrome DevTools Protocol (CDP) `Page.captureScreenshot` for native WebP conversion at quality 80, falling back cleanly to standard JPEG if CDP is unsupported.
+    - Strict `try/finally` teardown ensuring pages, contexts, and browsers are closed even on unexpected errors.
+    - `MockBrowserCaptureProvider` for fast, deterministic unit and workflow testing.
+  - **Database Schema, Storage Bucket, and Forced RLS (`supabase/migrations/20260906120000_audit_screenshots.sql`)**:
+    - Created `public.audit_screenshots` table referencing `organization_id`, `project_id`, `monitored_page_id`, and `audit_run_id`.
+    - Unique constraint `uq_audit_screenshots_run_device_type` on `(audit_run_id, device_type, capture_type)`.
+    - `FORCE ROW LEVEL SECURITY` enabled.
+    - RLS policies: SELECT allowed for organization members (`is_org_member`), INSERT/UPDATE/DELETE restricted to organization admins/owners (`is_org_admin_or_owner`).
+    - Private bucket `audit-screenshots` provisioned in Supabase Storage (`public = false`, `file_size_limit = 10485760`, allowed MIME types: `image/webp`, `image/png`, `image/jpeg`).
+    - Storage RLS policies restricting read and write access to verified organization paths.
+  - **Durable Inngest Workflow Step & Failure Isolation (`packages/workflows/src/functions/audit-workflow.ts`)**:
+    - Added Step 4 `capture-page-screenshots` to `execute-audit-workflow`, running strictly AFTER Step 3 `persist-audit-result`.
+    - Complete failure isolation: Step 4 is wrapped in a dedicated `try/catch`. If browser capture fails (network timeout, browser crash, oversized page), the error is logged and recorded in the workflow result (`visualStatus: "failed"`, `visualCapturesCount: 0`), while the static audit report and alert evaluation proceed with zero disruption.
+    - Idempotency check: Step 4 first queries `screenshotStore.listScreenshots(run.id)`. If screenshots are already present, browser capture is skipped entirely (`visualStatus: "already_completed"`).
+  - **Authenticated API & 15-Minute Signed URLs (`apps/api/src/screenshots/`)**:
+    - `GET /api/projects/:projectId/pages/:pageId/audits/:auditRunId/screenshots` mounted under project routes.
+    - Requires workspace authentication and organization membership.
+    - Resolves screenshot records from PostgreSQL, creates 15-minute signed download URLs from Supabase Storage via `createSignedUrl`, and returns `AuditScreenshotsResponse`.
+    - Cross-tenant requests return safe `404 NOT_FOUND`.
+  - **Web Client UI (`apps/web/src/features/audits/components/screenshot-preview-card.tsx`)**:
+    - `<ScreenshotPreviewCard />` rendering captured screenshots with Desktop (1280x800) and Mobile (375x812) switcher tabs.
+    - Prominent `"BROWSER-RENDERED EVIDENCE"` badge ensuring users understand the distinction from static HTML extraction.
+    - Accessible modal lightbox with keyboard `Escape` dismissal, image zoom, and ARIA dialog semantics.
+    - Integrated into `<HistoricalReportView />` and `<ReportView />`.
+- **Verification Evidence**:
+  - Full test suite: 760 tests passing across 82 test files (1 skipped).
+  - 11 screenshot contract tests (`packages/contracts/tests/screenshot-types.test.ts`).
+  - 22 browser security & capture tests (`packages/audit-engine/tests/browser-security.test.ts`, `browser-capture.test.ts`).
+  - 3 durable workflow visual integration & failure isolation tests (`packages/workflows/tests/audit-workflow-visual.test.ts`).
+  - 4 API authentication, RBAC, and signed URL generation tests (`apps/api/tests/screenshots-api.test.ts`).
+  - 8 Web UI preview, viewport switching, fallback, and lightbox tests (`apps/web/tests/screenshot-preview.test.tsx`).
+  - 20 migration schema tests validating tables, storage buckets, constraints, and RLS policies (`packages/contracts/tests/migration-schema.test.ts`).
+  - Runtime verification: 5 tests in `apps/api/tests/visual-runtime-smoke.test.ts` passing against real Playwright capture of `example.com`, SSRF loopback blocking, live private Supabase Storage upload + signed URL retrieval, secret scanning, and forced screenshot failure isolation.
+
+## D65 — Multimodal Gemini Vision Architecture, Taxonomies, Score Invariance, and Failure Isolation (Milestone 6 — Task 6.2)
+
+- **Problem & Motivation**:
+  - The static HTML audit engine extracts deterministic DOM signals and runs structured LLM analysis, but cannot perceive rendered visual hierarchy, above-the-fold hero CTA visual prominence, visual clutter, contrast and legibility in rendered typography, layout spacing clarity, or viewport adaptation between desktop and mobile layouts.
+  - Growth teams require visual UX intelligence derived directly from rendered screenshots without disrupting the established safe static-HTML audit baseline.
+  - **Critical Invariants**:
+    1. **Strict Score Invariance**: Static HTML audit scores (`audit_reports.overall_score`, `category_scores`), `score_snapshots`, deterministic checks, and findings are 100% strictly invariant. Visual analysis NEVER alters static scores.
+    2. **Segregation & Additive Model**: Visual findings live exclusively in a separate dedicated table (`public.visual_analysis_reviews`). They are never merged or blended into historical deterministic findings or report payloads.
+    3. **Explicit Provenance & Basis**: All visual findings are labeled with `basis: "visual_inference"` and display the prominent provenance badge `"VISION-ASSISTED AI REVIEW"`.
+    4. **Failure Isolation**: Multimodal vision analysis failure (transient upstream 503, rate limiting 429, timeout, or malformed provider output) MUST NEVER roll back, fail, or invalidate the static audit report, and must not prevent alert evaluation.
+    5. **No Second Screenshot Pipeline**: Uses strictly the WebP screenshots captured by the Task 6.1 Playwright pipeline.
+- **Architectural Decisions & Implementation**:
+  - **Shared Contract Layer (`packages/contracts/src/visual-analysis-types.ts`)**:
+    - Constants:
+      - `VISUAL_ANALYSIS_SCHEMA_VERSION = "1.0.0"`
+      - `VISUAL_ANALYSIS_PROMPT_VERSION = "1.0.0"`
+      - `VISUAL_PROVENANCE_LABEL = "VISION-ASSISTED AI REVIEW"`
+    - Enums:
+      - Closed set of 7 Visual Dimensions: `visual_hierarchy`, `cta_prominence`, `visual_clutter`, `contrast_legibility`, `typography_hierarchy`, `spacing_layout`, `mobile_adaptation`.
+      - Dimension Rating: `strong`, `adequate`, `needs_improvement`.
+      - Visual Zones: `above_the_fold`, `hero_section`, `body_content`, `header_navigation`, `footer`.
+      - Viewports: `desktop`, `mobile`, `both`.
+      - Severity: `high`, `medium`, `low`.
+      - Basis: literal `"visual_inference"`.
+    - Zod schemas:
+      - `visualDimensionAssessmentSchema`: rating, score, rationale, keyObservations.
+      - `visualFindingSchema`: structured finding with `observation`, `impact`, and `recommendation` (3-tier structure), severity, dimension, affectedViewport, and affectedZone.
+      - `visualAnalysisReviewSchema`: top-level review payload with executiveSummary, ctaProminenceAssessment, dimensions map, and findings array.
+      - `visualAnalysisResponseSchema`: API response envelope wrapping review, metadata, and provenance.
+  - **Multimodal Gemini Vision Provider (`packages/audit-engine/src/ai/gemini-vision-auditor.ts`)**:
+    - `VisionAuditProvider` interface decoupling visual analysis from model vendor.
+    - Multimodal Gemini request: sends both desktop and mobile WebP image buffers as inline base64 parts alongside a system instruction and visual analysis prompt.
+    - Wire schema vs Domain schema separation: Google Generative Language API rejects JSON Schema string/array length bounds (`minLength`, `maxLength`, `minItems`, `maxItems`) in `responseJsonSchema`. The `geminiVisionResponseJsonSchema()` helper strips these constraints for the wire config, while domain Zod schemas strictly enforce length and array bounds upon parsing (`parseGeminiVisionOutput`).
+    - Anti-hallucination & uncertainty calibration: system instructions strictly command the model to only evaluate visible rendered elements in the screenshots, acknowledge that non-interactive images cannot confirm hover or scroll interactions, and reject speculative claims.
+    - Robust transient retry: automatic backoff retry on transient 503 and 429 errors; 60s timeout bound.
+    - `MockVisionAuditor` for fast, deterministic unit and workflow testing.
+  - **Database Migration & Table (`supabase/migrations/20260907120000_visual_analysis_reviews.sql`)**:
+    - Created `public.visual_analysis_reviews` table referencing `organization_id`, `project_id`, `monitored_page_id`, and `audit_run_id`.
+    - Unique constraint `uq_visual_reviews_run` on `audit_run_id` guaranteeing 1:1 relationship with audit runs.
+    - Columns: `schema_version`, `prompt_version`, `model_name`, `provenance`, `executive_summary`, `dimensions` (JSONB), `findings` (JSONB), `metadata` (JSONB), `created_at`, `updated_at`.
+    - `FORCE ROW LEVEL SECURITY` enabled.
+    - 4 role policies: SELECT for organization members; INSERT/UPDATE/DELETE restricted to organization admins/owners.
+    - Applied and verified on dedicated live Supabase project `qzlffxlmrhqfjeohsnkm`.
+  - **Durable Inngest Workflow Integration (`packages/workflows/src/functions/audit-workflow.ts`)**:
+    - Step 5 `review-visual-hierarchy` added to `execute-audit-workflow`, running after Step 4 `capture-page-screenshots`.
+    - Decoupled storage buffer download: Step 5 downloads screenshots by storage path via `downloadScreenshot(path)` rather than transmitting multi-megabyte image buffers across Inngest step boundaries.
+    - Idempotency check: Step 5 queries `visualStore.getVisualReviewForAuditRun(run.id)` before running Gemini; skips cleanly if already completed (`visualReviewStatus: "already_completed"`).
+    - Failure isolation: Step 5 is wrapped in a dedicated `try/catch`. If visual review fails (Gemini API error, rate limit, timeout), the failure is recorded via `recordVisualReviewFailure` and reported in step output (`visualReviewStatus: "failed"`), while the static audit report and alert evaluation proceed with zero disruption.
+  - **API Architecture (`apps/api/src/visual-analysis/`)**:
+    - `SupabaseVisualAnalysisStore` implementing `WorkflowVisualAnalysisStore`.
+    - Route: `GET /api/projects/:projectId/pages/:pageId/audits/:auditRunId/visual-analysis`.
+    - Enforces organization membership and workspace session authentication.
+    - Safe 404 for cross-tenant, mismatched IDs, or runs without visual analysis.
+  - **Web Client UI (`apps/web/src/features/audits/components/visual-review-card.tsx`)**:
+    - `<VisualReviewCard />` component with `VISION-ASSISTED AI REVIEW` badge.
+    - Executive summary and Above-the-Fold CTA Prominence card with viewport visibility pill.
+    - 7 visual dimension cards with rating pills (`strong`, `adequate`, `needs_improvement`).
+    - Findings list with severity badge, affected viewport/zone badges, observation, impact, and actionable recommendation.
+    - Integrated into `<HistoricalReportView />` alongside `<ScreenshotPreviewCard />`.
+- **Verification Evidence**:
+  - 800 tests passing across 88 test files (1 skipped).
+  - 7 contract tests (`packages/contracts/tests/visual-analysis-types.test.ts`).
+  - 9 visual auditor tests (`packages/audit-engine/tests/gemini-vision-auditor.test.ts`).
+  - 3 durable workflow visual review tests (`packages/workflows/tests/audit-workflow-visual-review.test.ts`).
+  - 5 API authentication, RBAC, and visual review tests (`apps/api/tests/visual-analysis-api.test.ts`).
+  - 9 Web UI visual review card tests (`apps/web/tests/visual-review-card.test.tsx`).
+  - 21 migration schema tests validating tables, unique constraints, and RLS policies (`packages/contracts/tests/migration-schema.test.ts`).
+  - Runtime verification: 6 tests in `apps/api/tests/visual-analysis-runtime-smoke.test.ts` verifying live Supabase table & forced RLS, real Playwright browser capture of `example.com`, real Gemini Vision `generateContent` invocation with schema validation, byte-for-byte static score invariance proof, forced vision failure isolation proof, cross-tenant 404 security, and zero server secrets in `apps/web/dist`.
+
+## D66 — Visual Regression & Perceptual Change Detection Architecture, 32-Block Matrix, Zero-Download Hash Pre-computation, and Strict Alert Invariance (Milestone 6 — Task 6.3)
+
+- **Problem & Motivation**:
+  - Growth teams and designers need to detect layout shifts, visual alterations, and above-the-fold movements between consecutive landing-page audits or custom comparison targets without manual pixel-peeping.
+  - Raw pixel diffing (such as `pixelmatch`) is bandwidth-intensive, computationally heavy, brittle against rendering anti-aliasing or compression artifacts, and requires re-downloading multi-megabyte image assets across the network on every diff calculation.
+  - **Critical Invariants**:
+    1. **Strict Score Invariance**: Static HTML audit scores (`overall_score`, `category_scores`), score snapshots, deterministic findings, and recommendations are 100% strictly invariant. Visual diff results never alter static audit scores.
+    2. **Deterministic Diff Invariance**: Existing `computeAuditDiff` static diff logic remains pure and unmodified. A lightweight `visualDiffSummary` is optionally projected on top without modifying static diff semantics.
+    3. **Alert Separation**: Visual regressions DO NOT trigger email, Slack, or webhook notifications in Task 6.3. Alerts remain strictly governed by static audit regressions ($\Delta \le -10$ points, new high-severity findings) and scan failures.
+    4. **Zero-Download Optimization**: Perceptual dHash (64 hex characters) and thirty-two 16-hex character block hashes are precomputed during Task 6.1 Playwright capture and persisted in `public.audit_screenshots`. Subsequent audit comparisons evaluate diffs strictly from hashes in microseconds without downloading image buffers.
+    5. **Failure Isolation**: Step 6 `detect-visual-regression` is isolated in a dedicated `try/catch`. Failures during visual comparison never invalidate or roll back the already-persisted static audit report or alert evaluation.
+    6. **Historical Immutability & Privacy**: Historical screenshots and diff results are immutable. No raw pixel matrices or image buffers are persisted in `public.visual_diff_results`.
+    7. **Tenant Isolation & Forced RLS**: Complete multi-tenant isolation enforced via PostgreSQL RLS and API middleware. Cross-tenant queries return safe 404 Not Found.
+- **Architectural Decisions & Implementation**:
+  - **Shared Contract Layer (`packages/contracts/src/visual-regression-types.ts`)**:
+    - Centralized constants & versions:
+      - `VISUAL_REGRESSION_SCHEMA_VERSION = "1.0.0"`
+      - `VISUAL_DIFF_ALGORITHM = "dhash_luminance_32block"`
+      - `TOTAL_GRID_BLOCKS = 32` (4 columns $\times$ 8 rows)
+      - `BLOCK_NOISE_THRESHOLD = 12` (Hamming distance $\le 12\%$ is treated as anti-aliasing/compression noise)
+      - `HERO_CHANGE_THRESHOLD = 20` (Hero section change $\ge 20\%$ marks Hero zone changed)
+      - `HERO_SHIFT_THRESHOLD_PERCENT = 20` (Triggers Above-the-Fold layout shift indicator)
+      - `MEANINGFUL_CHANGE_THRESHOLD = 15`
+      - `MEANINGFUL_CHANGED_BLOCKS_COUNT = 8`
+      - `MEANINGFUL_HEIGHT_DELTA_PX = 300`
+    - Severity Tiers: `negligible` ($<5$), `minor` ($5\text{–}<15$), `moderate` ($15\text{–}<30$), `significant` ($30\text{–}<60$), `major` ($\ge 60$).
+    - 3-Zone Hierarchy:
+      - `hero`: Rows 0–1 (Blocks 0–7)
+      - `body`: Rows 2–5 (Blocks 8–23)
+      - `footer`: Rows 6–7 (Blocks 24–31)
+    - Enums & Schemas: `visualChangeSeveritySchema`, `visualZoneSchema`, `visualBlockDiffSchema`, `visualZoneDiffSchema`, `visualDiffResultSchema`, `visualDiffSummarySchema`, `visualDiffResponseSchema`.
+    - Extensions: Added `perceptualHash` and `blockHashes` to `auditScreenshotMetadataSchema`. Added optional `visualDiffSummary` to `auditDiffResponseSchema`.
+  - **Deterministic Visual Diff Engine (`packages/audit-engine/src/visual-diff/`)**:
+    - `VisualDiffEngine`: Pure deterministic diff engine with zero database or network dependencies.
+    - Validates matching device (`desktop` vs `mobile`) and capture types (`viewport` vs `full_page`).
+    - Evaluates all 32 blocks, filters noise using 12% Hamming threshold, and computes normalized block change percentages.
+    - Aggregates block changes into Hero, Body, and Footer zone change scores.
+    - Height delta metrics: Computes common-height visual diff for full-page screenshots along with explicit `heightDeltaPx` and `heightDeltaPercent`.
+    - Meaningful change classification: True if `overallChangeScore >= 15` OR `heroZoneChange >= 20` OR `changedBlocksCount >= 8` OR `abs(heightDeltaPx) >= 300`.
+    - Deterministic explainable reasons generation based on zone shifts, block counts, and height deltas.
+    - `MockVisualDiffEngine` for deterministic testing.
+  - **In-Page Canvas Downsampling & Luminance Hasher (`packages/audit-engine/src/visual-diff/perceptual-hasher.ts`)**:
+    - Generates 64-hex char global perceptual dHash (16x16 gradient difference = 256 bits) and thirty-two 16-hex char block hashes (8x8 gradient difference = 64 bits each) using Rec.601 luminance coefficients ($0.299R + 0.587G + 0.114B$).
+    - Integrated into `PlaywrightBrowserCaptureProvider` via lightweight in-page canvas downsampling before image upload, ensuring zero overhead during subsequent audit comparisons.
+  - **Database Migration (`supabase/migrations/20260908120000_visual_diff_results.sql`)**:
+    - Altered `public.audit_screenshots` to add `perceptual_hash text` and `block_hashes jsonb`.
+    - Created `public.visual_diff_results` table referencing `current_audit_run_id`, `baseline_audit_run_id`, `current_screenshot_id`, and `baseline_screenshot_id`.
+    - Unique constraint `uq_visual_diff_pair` on `(current_audit_run_id, baseline_audit_run_id, device_type, capture_type)` preventing duplicate comparisons.
+    - Check constraints for score and percentage bounds $[0, 100]$.
+    - `FORCE ROW LEVEL SECURITY` enabled with 4 role-based policies: SELECT for organization members; INSERT/UPDATE for owners, admins, members; DELETE for owners, admins.
+    - Applied and verified against live dedicated Supabase project `qzlffxlmrhqfjeohsnkm`.
+  - **Durable Inngest Workflow Integration (`packages/workflows/src/functions/audit-workflow.ts`)**:
+    - Step 6 `detect-visual-regression` added to `execute-audit-workflow`, running after Step 5 `review-visual-hierarchy`.
+    - Baseline resolution: automatically queries the previous successful audit run for the page, or uses `compareRunId` if supplied in event payload.
+    - Pairs matching device (`desktop` and `mobile`) and capture types.
+    - If no baseline exists (e.g. first audit run), persists explicit baseline records (`is_baseline = true`, `status = 'baseline'`) rather than fabricating fake 0-change diffs.
+    - Failure isolation: Step 6 is wrapped in a dedicated `try/catch`. Visual diff errors are logged and recorded via `recordVisualDiffFailure`, while static audit completion and alert evaluation proceed uninterrupted.
+    - Workflow idempotency: checks `getVisualDiffsForRun` and skips re-execution if diffs already exist.
+  - **API Architecture (`apps/api/src/visual-diff/`)**:
+    - `SupabaseVisualDiffStore` implementing `WorkflowVisualDiffStore` and API store interfaces.
+    - REST Route: `GET /api/projects/:projectId/pages/:pageId/audits/:auditRunId/visual-diff` with optional `?compareRunId=<uuid>`.
+    - Strict tenant boundary verification: validates organization, project, and page membership, returning safe 404 for mismatched or cross-tenant IDs.
+    - Generates 15-minute signed URLs on-demand for before/after screenshot images.
+    - Attached `visualDiffSummary` to `GET /.../diff` response for immediate overview in comparison views.
+  - **Web Client UI (`apps/web/`)**:
+    - `<VisualRegressionCard />`:
+      - Device viewport switcher (Desktop vs Mobile) with change score badge and severity indicator.
+      - Above-the-fold layout shift warning banner when Hero change $\ge 20\%$.
+      - 3-Zone metrics breakdown: Hero, Body, and Footer change percentages with visual progress meters.
+      - Explainable change reasons list.
+      - Side-by-side Before/After screenshot comparison with BROWSER-RENDERED EVIDENCE badges and accessible lightbox zoom.
+      - Explicit First Audit Baseline banner explaining that future runs will track visual shifts against this reference.
+    - Integrated into `<HistoricalReportView />` in the screenshot analysis section.
+    - Added "Visual Changes" tab with dynamic change score pill to `<ReportComparisonView />`.
+- **Verification Evidence**:
+  - 852 tests passing across 94 test files (1 skipped).
+  - 9 visual regression contract tests (`packages/contracts/tests/visual-regression-types.test.ts`).
+  - 14 deterministic visual diff engine tests (`packages/audit-engine/tests/visual-diff.test.ts`).
+  - 4 durable workflow visual diff tests (`packages/workflows/tests/audit-workflow-visual-diff.test.ts`).
+  - 8 API authentication, RBAC, and visual diff tests (`apps/api/tests/visual-diff-api.test.ts`).
+  - 10 Web UI visual regression card tests (`apps/web/tests/visual-regression-card.test.tsx`).
+  - 6 Web UI report comparison view tests (`apps/web/tests/report-comparison-view.test.tsx`).
+  - 22 migration schema tests (`packages/contracts/tests/migration-schema.test.ts`).
+  - Runtime verification (`apps/api/tests/visual-regression-runtime-smoke.test.ts`):
+    - Live dedicated Supabase migration & RLS enforcement on `public.visual_diff_results` (INSERT, SELECT, UPDATE, DELETE).
+    - Real Playwright browser dual capture against `example.com` generating 64-hex char perceptual hash and 32 block hashes.
+    - Static audit score invariance verification: byte-for-byte serialized report payload identity before and after visual diff execution.
+    - Workflow failure isolation: simulated database and storage errors isolated without affecting static audit persistence or alert evaluation.
+    - Zero server secrets in production web client bundle (`apps/web/dist`).
+  - Production build (`tsc -b && vite build`) passes with 0 errors.
+
+
 
 
 

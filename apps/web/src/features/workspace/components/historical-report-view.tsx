@@ -9,6 +9,9 @@ import type {
   WorkItem,
 } from "@pagepilot/contracts";
 import { ReportView } from "../../analysis/components/report-view";
+import { ScreenshotPreviewCard } from "../../audits/components/screenshot-preview-card";
+import { VisualReviewCard } from "../../audits/components/visual-review-card";
+import { VisualRegressionCard } from "../../audits/components/visual-regression-card";
 import {
   CreateWorkItemModal,
   type PrefillSourceData,
@@ -243,6 +246,25 @@ export function HistoricalReportView({
           onCreateFindingWorkItem={!isViewer ? handleTrackFinding : undefined}
           onCreateRecommendationWorkItem={
             !isViewer ? handleTrackRecommendation : undefined
+          }
+          screenshotsSlot={
+            <div className="space-y-6">
+              <ScreenshotPreviewCard
+                projectId={auditRun.projectId}
+                pageId={auditRun.monitoredPageId}
+                auditRunId={auditRun.id}
+              />
+              <VisualReviewCard
+                projectId={auditRun.projectId}
+                pageId={auditRun.monitoredPageId}
+                auditRunId={auditRun.id}
+              />
+              <VisualRegressionCard
+                projectId={auditRun.projectId}
+                pageId={auditRun.monitoredPageId}
+                auditRunId={auditRun.id}
+              />
+            </div>
           }
         />
       </div>

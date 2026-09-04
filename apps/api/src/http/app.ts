@@ -80,6 +80,12 @@ import type { SharePersistenceStore } from "../share/share-store.js";
 import { createPublicSharedReportHandler } from "../share/routes.js";
 import type { IntegrationsStore } from "../integrations/integrations-store.js";
 import type { AnalyticsStore } from "../analytics/analytics-store.js";
+import type { ScreenshotsStore } from "../screenshots/screenshots-store.js";
+import { SupabaseScreenshotsStore } from "../screenshots/screenshots-store.js";
+import type { VisualAnalysisStore } from "../visual-analysis/visual-analysis-store.js";
+import { SupabaseVisualAnalysisStore } from "../visual-analysis/visual-analysis-store.js";
+import type { VisualDiffStore } from "../visual-diff/visual-diff-store.js";
+import { SupabaseVisualDiffStore } from "../visual-diff/visual-diff-store.js";
 
 export interface AppOptions extends AuthMiddlewareOptions {
   /** Injectable for tests; production uses the real safe-fetch pipeline. */
@@ -96,6 +102,12 @@ export interface AppOptions extends AuthMiddlewareOptions {
   getIntegrationsStore?: (req: Request) => IntegrationsStore;
   /** Injectable for tests; production instantiates SupabaseAnalyticsStore with user authToken. */
   getAnalyticsStore?: (req: Request) => AnalyticsStore;
+  /** Injectable for tests; production instantiates SupabaseScreenshotsStore with user authToken. */
+  getScreenshotsStore?: (req: Request) => ScreenshotsStore;
+  /** Injectable for tests; production instantiates SupabaseVisualAnalysisStore with user authToken. */
+  getVisualAnalysisStore?: (req: Request) => VisualAnalysisStore;
+  /** Injectable for tests; production instantiates SupabaseVisualDiffStore with user authToken. */
+  getVisualDiffStore?: (req: Request) => VisualDiffStore;
   /** Injectable for tests; DNS resolver for SSRF verification */
   dnsResolver?: DnsResolver;
   /** Injectable for tests; public share rate limiter */
@@ -395,6 +407,9 @@ export function createApp(options: AppOptions = {}): Express {
       getShareStore: options.getShareStore,
       getIntegrationsStore: options.getIntegrationsStore,
       getAnalyticsStore: options.getAnalyticsStore,
+      getScreenshotsStore: options.getScreenshotsStore,
+      getVisualAnalysisStore: options.getVisualAnalysisStore,
+      getVisualDiffStore: options.getVisualDiffStore,
       dnsResolver: options.dnsResolver,
       analyzeUrl: options.analyzeUrl,
     }),
@@ -407,9 +422,40 @@ export function createApp(options: AppOptions = {}): Express {
     if (options.inngestFunctions) return options.inngestFunctions;
     const store =
       options.getWorkflowStore?.() ?? new SupabaseWorkflowPersistenceStore();
+
+    let screenshotStore: ScreenshotsStore | undefined;
+    try {
+      screenshotStore =
+        options.getScreenshotsStore?.({} as Request) ??
+        new SupabaseScreenshotsStore();
+    } catch {
+      // In test environments without Supabase credentials, screenshotStore is optional
+    }
+
+    let visualAnalysisStore: VisualAnalysisStore | undefined;
+    try {
+      visualAnalysisStore =
+        options.getVisualAnalysisStore?.({} as Request) ??
+        new SupabaseVisualAnalysisStore();
+    } catch {
+      // In test environments without Supabase credentials, visualAnalysisStore is optional
+    }
+
+    let visualDiffStore: VisualDiffStore | undefined;
+    try {
+      visualDiffStore =
+        options.getVisualDiffStore?.({} as Request) ??
+        new SupabaseVisualDiffStore();
+    } catch {
+      // In test environments without Supabase credentials, visualDiffStore is optional
+    }
+
     return [
       createAuditWorkflow({
         auditStore: store,
+        screenshotStore,
+        visualAnalysisStore,
+        visualDiffStore,
         analyzeUrl: options.analyzeUrl,
       }),
       createWeeklyScheduler({

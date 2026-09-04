@@ -27,6 +27,11 @@ export const auditRequestedPayloadSchema = z.object({
     .uuid("requestedByUserId must be a valid UUID")
     .nullable()
     .optional(),
+  compareRunId: z
+    .string()
+    .uuid("compareRunId must be a valid UUID")
+    .nullable()
+    .optional(),
 });
 
 export type AuditRequestedPayload = z.infer<typeof auditRequestedPayloadSchema>;

@@ -8,3 +8,6 @@ export * from "./integration-types.js";
 export * from "./timezone.js";
 export * from "./url-policy.js";
 export * from "./analytics-types.js";
+export * from "./screenshot-types.js";
+export * from "./visual-analysis-types.js";
+export * from "./visual-regression-types.js";

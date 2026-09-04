@@ -24,6 +24,12 @@ import { createIntegrationsRouter } from "../integrations/routes.js";
 import type { IntegrationsStore } from "../integrations/integrations-store.js";
 import { createAnalyticsRouter } from "../analytics/routes.js";
 import type { AnalyticsStore } from "../analytics/analytics-store.js";
+import { createScreenshotsRouter } from "../screenshots/routes.js";
+import type { ScreenshotsStore } from "../screenshots/screenshots-store.js";
+import { createVisualAnalysisRouter } from "../visual-analysis/routes.js";
+import type { VisualAnalysisStore } from "../visual-analysis/visual-analysis-store.js";
+import { createVisualDiffRouter } from "../visual-diff/routes.js";
+import type { VisualDiffStore } from "../visual-diff/visual-diff-store.js";
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -48,6 +54,9 @@ export interface ProjectRoutesOptions {
   getShareStore?: (req: Request) => SharePersistenceStore;
   getIntegrationsStore?: (req: Request) => IntegrationsStore;
   getAnalyticsStore?: (req: Request) => AnalyticsStore;
+  getScreenshotsStore?: (req: Request) => ScreenshotsStore;
+  getVisualAnalysisStore?: (req: Request) => VisualAnalysisStore;
+  getVisualDiffStore?: (req: Request) => VisualDiffStore;
   dnsResolver?: DnsResolver;
   analyzeUrl?: (url: string) => Promise<AnalysisOutcome>;
 }
@@ -535,6 +544,7 @@ export function createProjectsRouter(options: ProjectRoutesOptions = {}): Router
     createAuditsRouter({
       getProjectsStore: getStore,
       getAuditStore: options.getAuditStore,
+      getVisualDiffStore: options.getVisualDiffStore,
       analyzeUrl: options.analyzeUrl,
     }),
   );
@@ -582,6 +592,40 @@ export function createProjectsRouter(options: ProjectRoutesOptions = {}): Router
     createAnalyticsRouter({
       getStore: options.getAnalyticsStore,
       getProjectsStore: getStore,
+    }),
+  );
+
+  // =========================================================================
+  // 8. Visual Evidence Screenshots (Nested under /:projectId/pages/:pageId/audits/:auditRunId/screenshots)
+  // =========================================================================
+  router.use(
+    "/:projectId/pages/:pageId/audits/:auditRunId/screenshots",
+    createScreenshotsRouter({
+      getStore: options.getScreenshotsStore,
+      getProjectsStore: getStore,
+    }),
+  );
+
+  // =========================================================================
+  // 9. Vision-Assisted Visual Hierarchy Review (Nested under /:projectId/pages/:pageId/audits/:auditRunId/visual-analysis)
+  // =========================================================================
+  router.use(
+    "/:projectId/pages/:pageId/audits/:auditRunId/visual-analysis",
+    createVisualAnalysisRouter({
+      getStore: options.getVisualAnalysisStore,
+      getProjectsStore: getStore,
+    }),
+  );
+
+  // =========================================================================
+  // 10. Visual Regression Diff (Nested under /:projectId/pages/:pageId/audits/:auditRunId/visual-diff)
+  // =========================================================================
+  router.use(
+    "/:projectId/pages/:pageId/audits/:auditRunId/visual-diff",
+    createVisualDiffRouter({
+      getStore: options.getVisualDiffStore,
+      getProjectsStore: getStore,
+      getAuditStore: options.getAuditStore,
     }),
   );
 

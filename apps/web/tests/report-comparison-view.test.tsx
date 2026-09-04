@@ -609,4 +609,45 @@ describe("<ReportComparisonView />", () => {
       expect(screen.getByText(/Baseline Audit Established/i)).toBeDefined();
     });
   });
+
+  it("switches to Visual Changes tab when clicked", async () => {
+    vi.mocked(auditsApi.getAuditDiff).mockResolvedValue(mockRegressionDiffResponse);
+    vi.mocked(auditsApi.fetchVisualDiff).mockResolvedValue({
+      diffs: [],
+      summary: {
+        hasVisualDiff: true,
+        isBaseline: false,
+        isMeaningfulChange: true,
+        maxChangeScore: 22,
+        maxChangeSeverity: "moderate",
+        desktopChangeScore: 22,
+        mobileChangeScore: 5,
+        changeReasons: [],
+      },
+      baselineRunId: "run-prev",
+      currentRunId: "run-curr",
+    });
+
+    render(
+      <ReportComparisonView
+        projectId="proj-1"
+        page={mockPage}
+        currentRunId="run-curr"
+        role="owner"
+        members={mockMembers}
+        pages={[mockPage]}
+        onBack={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("tab-visual-changes")).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByTestId("tab-visual-changes"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("visual-changes-tab-content")).toBeDefined();
+    });
+  });
 });

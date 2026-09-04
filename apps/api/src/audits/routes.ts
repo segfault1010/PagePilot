@@ -13,6 +13,8 @@ import type { ProjectsStore } from "../projects/projects-store.js";
 import { AuditService } from "./audit-service.js";
 import { SupabaseAuditPersistenceStore } from "./audit-store.js";
 import type { AuditPersistenceStore } from "./audit-store.js";
+import type { VisualDiffStore } from "../visual-diff/visual-diff-store.js";
+import { SupabaseVisualDiffStore } from "../visual-diff/visual-diff-store.js";
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -31,6 +33,7 @@ function getParam(req: Request, name: string): string {
 export interface AuditRoutesOptions {
   getProjectsStore?: (req: Request) => ProjectsStore;
   getAuditStore?: (req: Request) => AuditPersistenceStore;
+  getVisualDiffStore?: (req: Request) => VisualDiffStore;
   analyzeUrl?: (url: string) => Promise<AnalysisOutcome>;
 }
 
@@ -374,10 +377,32 @@ export function createAuditsRouter(options: AuditRoutesOptions = {}): Router {
             : null,
         });
 
+        let visualDiffSummary = null;
+        try {
+          const vDiffStore =
+            options.getVisualDiffStore?.(req) ??
+            new SupabaseVisualDiffStore(undefined, req.authToken);
+          const vDiffResp = await vDiffStore.getVisualDiffResponse({
+            organizationId: orgId,
+            projectId,
+            pageId,
+            auditRunId,
+            compareRunId:
+              compareRunId ||
+              (previousPersisted ? previousPersisted.auditRun.id : undefined),
+          });
+          if (vDiffResp?.summary) {
+            visualDiffSummary = vDiffResp.summary;
+          }
+        } catch {
+          // Failure to fetch visual diff should never break static audit diff
+        }
+
         res.status(200).json({
           diff,
           currentReport: currentPersisted,
           previousReport: previousPersisted ?? null,
+          visualDiffSummary,
         });
       } catch (err: any) {
         console.error("[audits] get audit diff error:", err);

@@ -265,9 +265,45 @@ This roadmap defines the evolution of PagePilot from a single-project MVP into a
 ---
 
 ### Milestone 6: Deep Analysis Pipeline
-- **Status:** `Planned`
-- **Product Outcome:** Augment static HTML audits with browser-rendered measurements and visual evidence.
+- **Status:** `In Progress (Tasks 6.1, 6.2 & 6.3 Complete & Verified on Dedicated Supabase)`
+- **Product Outcome:** Augment static HTML audits with browser-rendered measurements and visual evidence without disrupting the safe static-HTML audit baseline.
 - **Dependencies:** Milestone 1, Milestone 3.
+- **Tasks & Execution Plan:**
+  - **Task 6.1 — Playwright Screenshot Capture Foundation & Secure Browser Pipeline:** `Complete & Verified`
+    - BrowserCaptureProvider abstraction with PlaywrightBrowserCaptureProvider (headless Chromium sandboxing with installed Chrome/Edge fallback) and deterministic MockBrowserCaptureProvider.
+    - Strict browser SSRF request interception (`page.route('**/*')`) and pre-navigation DNS validation blocking non-HTTP/S, non-80/443 ports, non-routable/loopback/cloud-metadata IPs, and multi-record mixed DNS across all initial requests, redirects, and subresources.
+    - Dual bounded viewports: Desktop (1280x800) and Mobile (375x812 with iPhone UA) with 4000px maximum height cap, WebP conversion via CDP with JPEG fallback, and 5MB payload limits.
+    - Database migration `20260906120000_audit_screenshots.sql` creating `public.audit_screenshots` with forced RLS and private Supabase Storage bucket `audit-screenshots` with 10MB limit and webp/png/jpeg MIME restrictions.
+    - 15-minute ephemeral signed URLs generated on-demand via authenticated API (`GET /api/projects/:projectId/pages/:pageId/audits/:auditRunId/screenshots`); zero permanent public URLs or storage keys exposed to clients.
+    - Step 4 `capture-page-screenshots` integrated into durable Inngest `execute-audit-workflow` with complete failure isolation: screenshot errors are logged and recorded without invalidating or failing the already-persisted static audit report.
+    - Deterministic workflow idempotency: skips browser execution if screenshots already exist for the given audit run.
+    - Web UI: `<ScreenshotPreviewCard />` with desktop/mobile viewport toggle, "BROWSER-RENDERED EVIDENCE" provenance badge, accessible modal lightbox, and graceful empty/loading states in `HistoricalReportView` and `ReportView`.
+    - Automated tests (contracts, browser security, workflow isolation, API RBAC, UI preview) and runtime smoke verification against live Supabase and real Playwright browser passing 100%.
+  - **Task 6.2 — Vision-Assisted Visual Hierarchy Review:** `Complete & Verified`
+    - Multimodal Gemini prompt expansion for visual hierarchy, above-the-fold CTA prominence, visual clutter, contrast and legibility, typography hierarchy, layout spacing, and mobile adaptation using captured WebP screenshots.
+    - Strict schema validation: wire schema with stripped bounds keywords for Google Generative Language API, followed by domain Zod validation ensuring structured 3-tier findings (`observation`, `impact`, `recommendation`).
+    - Dedicated database migration `20260907120000_visual_analysis_reviews.sql` creating `public.visual_analysis_reviews` with unique constraint on `audit_run_id`, forced RLS, and 4 role policies, applied on dedicated Supabase project `qzlffxlmrhqfjeohsnkm`.
+    - Step 5 `review-visual-hierarchy` integrated into Inngest `execute-audit-workflow` with failure isolation (vision errors never roll back static audit or block alert evaluation) and decoupled storage buffer downloading to maintain step payload limits.
+    - Authenticated API endpoint `GET /api/projects/:projectId/pages/:pageId/audits/:auditRunId/visual-analysis` with strict tenant isolation and safe 404s.
+    - Web UI `<VisualReviewCard />` featuring `VISION-ASSISTED AI REVIEW` provenance badge, executive summary, 7 visual dimension cards with rating pills, CTA prominence viewport pill, and 3-tier finding breakdowns in `HistoricalReportView`.
+    - Absolute Score Invariance: Static HTML audit scores, `report_payload`, `score_snapshots`, findings, diff engine, and alert evaluation remain 100% strictly invariant.
+    - Verified with 800 tests passing across 88 test files (1 skipped), live Supabase RLS verification, live Gemini Vision generation runtime smoke, and 0 secret leaks.
+  - **Task 6.3 — Visual Regression & Perceptual Change Detection:** `Complete & Verified`
+    - Pure deterministic visual-diff engine (`VisualDiffEngine`, `MockVisualDiffEngine`) using dHash and luminance comparison over a 4x8 (32-block) grid.
+    - Multi-zone aggregation across Hero (rows 0–1, blocks 0–7), Body (rows 2–5, blocks 8–23), and Footer (rows 6–7, blocks 24–31) with above-the-fold shift detection ($\ge 20\%$ hero change).
+    - Zero-download optimization: 64-hex char global dHash and thirty-two 16-hex char block hashes precomputed during Task 6.1 capture and stored in `public.audit_screenshots`. Subsequent audit comparisons require 0 image downloads.
+    - Hamming distance with noise suppression: block Hamming distance $\le 12\%$ treated as rendering/compression noise. Change score scaled and classified into 5 tiers: `negligible` ($<5$), `minor` ($5\text{–}<15$), `moderate` ($15\text{–}<30$), `significant` ($30\text{–}<60$), `major` ($\ge 60$).
+    - Meaningful change criteria: overall change score $\ge 15$, Hero change $\ge 20\%$, changed blocks count $\ge 8$, or dynamic height delta $|\Delta| \ge 300\text{px}$.
+    - Dedicated database migration `20260908120000_visual_diff_results.sql` creating `public.visual_diff_results` with unique `(current_audit_run_id, baseline_audit_run_id, device_type, capture_type)` constraint and forced RLS.
+    - Step 6 `detect-visual-regression` integrated into durable Inngest `execute-audit-workflow` with complete failure isolation and replay idempotency.
+    - Authenticated API endpoint `GET /api/projects/:projectId/pages/:pageId/audits/:auditRunId/visual-diff` with optional `?compareRunId=<uuid>` and `visualDiffSummary` integration in `GET /.../diff` endpoint.
+    - Accessible Web UI: `<VisualRegressionCard />` integrated into `HistoricalReportView` and new "Visual Changes" tab with change score pill in `ReportComparisonView`.
+    - Invariants: 100% static audit score invariance, deterministic diff invariance, zero outbound alerts in Task 6.3, historical screenshot immutability, zero raw pixel storage.
+    - Verified with 852 tests passing across 94 test files (1 skipped), live Supabase migration and RLS verification, dual-screenshot real Playwright smoke capture, static score invariance proof, and build verification.
+  - **Task 6.4 — Lighthouse / PageSpeed Insights Performance:** `Planned`
+    - Core Web Vitals extraction (LCP, CLS, INP) in separate measurement pipeline.
+  - **Task 6.5 — Automated axe-core Accessibility Evaluation:** `Planned`
+    - Automated WCAG 2.1 AA rule evaluation executed inside browser context.
 - **Must Include:**
   - Separate Playwright screenshot capture pipeline (never replacing safe static fetch).
   - Vision-assisted visual hierarchy review.
@@ -278,6 +314,7 @@ This roadmap defines the evolution of PagePilot from a single-project MVP into a
 - **Acceptance Criteria:**
   - Visual measurements and browser metrics explicitly labeled and segregated from static-HTML signals.
   - Static-HTML safe audit pipeline remains independently operational.
+  - Screenshot failures never fail or invalidate already-persisted static audits.
 
 ---
 

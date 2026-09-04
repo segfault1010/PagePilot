@@ -4,12 +4,18 @@ import type {
   AuditRunResponse,
   PersistedAuditReportResponse,
   TriggerAuditRequest,
+  AuditScreenshotsResponse,
+  VisualAnalysisResponse,
+  VisualDiffResponse,
 } from "@pagepilot/contracts";
 import {
   auditDiffResponseSchema,
   auditHistoryListResponseSchema,
   auditRunResponseSchema,
   persistedAuditReportResponseSchema,
+  auditScreenshotsResponseSchema,
+  visualAnalysisResponseSchema,
+  visualDiffResponseSchema,
 } from "@pagepilot/contracts";
 import { getSupabaseClient } from "../auth/supabase-client.js";
 
@@ -225,5 +231,62 @@ export async function exportAuditReportCsv(
 
   return res.blob();
 }
+
+/**
+ * Fetches browser screenshot evidence with signed URLs for an audit run.
+ */
+export async function fetchAuditScreenshots(
+  projectId: string,
+  pageId: string,
+  auditRunId: string,
+  options: AuditRequestOptions = {}
+): Promise<AuditScreenshotsResponse> {
+  const json = await authenticatedFetch<unknown>(
+    `/api/projects/${projectId}/pages/${pageId}/audits/${auditRunId}/screenshots`,
+    { method: "GET" },
+    options
+  );
+  return auditScreenshotsResponseSchema.parse(json);
+}
+
+/**
+ * Fetches vision-assisted visual hierarchy review for an audit run.
+ */
+export async function fetchVisualAnalysis(
+  projectId: string,
+  pageId: string,
+  auditRunId: string,
+  options: AuditRequestOptions = {}
+): Promise<VisualAnalysisResponse> {
+  const json = await authenticatedFetch<unknown>(
+    `/api/projects/${projectId}/pages/${pageId}/audits/${auditRunId}/visual-analysis`,
+    { method: "GET" },
+    options
+  );
+  return visualAnalysisResponseSchema.parse(json);
+}
+
+/**
+ * Fetches visual regression diff and perceptual change analysis for an audit run.
+ */
+export async function fetchVisualDiff(
+  projectId: string,
+  pageId: string,
+  auditRunId: string,
+  options: AuditRequestOptions & { compareRunId?: string } = {}
+): Promise<VisualDiffResponse> {
+  const query = options.compareRunId
+    ? `?compareRunId=${encodeURIComponent(options.compareRunId)}`
+    : "";
+  const json = await authenticatedFetch<unknown>(
+    `/api/projects/${projectId}/pages/${pageId}/audits/${auditRunId}/visual-diff${query}`,
+    { method: "GET" },
+    options
+  );
+  return visualDiffResponseSchema.parse(json);
+}
+
+export const getVisualDiff = fetchVisualDiff;
+
 
 

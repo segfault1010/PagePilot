@@ -16,11 +16,13 @@ export function ReportView({
   onAnalyzeAnother,
   onCreateFindingWorkItem,
   onCreateRecommendationWorkItem,
+  screenshotsSlot,
 }: {
   report: Report;
   onAnalyzeAnother?: () => void;
   onCreateFindingWorkItem?: (finding: Finding) => void;
   onCreateRecommendationWorkItem?: (recommendation: Recommendation) => void;
+  screenshotsSlot?: React.ReactNode;
 }) {
   return (
     <div>
@@ -30,6 +32,8 @@ export function ReportView({
         problems={report.topProblems}
         onCreateWorkItem={onCreateFindingWorkItem}
       />
+
+      {screenshotsSlot}
 
       <CategoryGrid categories={report.categories} />
 

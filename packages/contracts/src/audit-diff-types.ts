@@ -12,6 +12,7 @@ import {
   isoDateTimeSchema,
   persistedAuditReportResponseSchema,
 } from "./database-types.js";
+import { visualDiffSummarySchema } from "./visual-regression-types.js";
 
 /**
  * Version constant for the diff contract schema.
@@ -253,6 +254,7 @@ export const auditDiffResponseSchema = z.object({
   diff: auditDiffSchema,
   currentReport: persistedAuditReportResponseSchema.optional(),
   previousReport: persistedAuditReportResponseSchema.nullable().optional(),
+  visualDiffSummary: visualDiffSummarySchema.nullable().optional(),
 });
 export type AuditDiffResponse = z.infer<typeof auditDiffResponseSchema>;
 

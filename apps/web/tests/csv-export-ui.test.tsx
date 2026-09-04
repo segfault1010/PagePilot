@@ -50,6 +50,24 @@ vi.mock("../src/features/audits/api.js", () => {
 
   return {
     exportAuditReportCsv: vi.fn(),
+    fetchAuditScreenshots: vi.fn(async () => ({ screenshots: [] })),
+    fetchVisualAnalysis: vi.fn(async () => ({ visualAnalysis: null })),
+    fetchVisualDiff: vi.fn(async () => ({
+      diffs: [],
+      currentRunId: "00000000-0000-0000-0000-000000000000",
+      baselineRunId: null,
+      summary: {
+        hasVisualDiff: false,
+        isBaseline: true,
+        isMeaningfulChange: false,
+        maxChangeScore: 0,
+        maxChangeSeverity: "negligible",
+        desktopChangeScore: null,
+        mobileChangeScore: null,
+        changeReasons: [],
+      },
+    })),
+    getVisualDiff: vi.fn(),
     AuditApiClientError,
   };
 });

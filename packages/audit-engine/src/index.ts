@@ -110,3 +110,34 @@ export type {
   AuditDiffRunMeta,
 } from "./diff/audit-diff.js";
 
+// Browser Screenshot Pipeline (Milestone 6)
+export * from "./browser/index.js";
+
+// Vision-Assisted Visual Hierarchy Review (Task 6.2)
+export {
+  createGeminiVisionAuditor,
+  MockVisionAuditor,
+} from "./ai/gemini-vision-auditor.js";
+export type {
+  ScreenshotInput,
+  VisualAnalysisInput,
+  VisionAuditProvider,
+  GeminiVisionAuditorOptions,
+} from "./ai/gemini-vision-auditor.js";
+export {
+  GEMINI_VISION_STRING_LIMITS,
+  geminiVisionWireShapeSchema,
+  geminiVisionWireDimensionSchema,
+  geminiVisionWireFindingSchema,
+  geminiVisionResponseJsonSchema,
+  parseGeminiVisionOutput,
+} from "./schemas/vision-audit-schema.js";
+export type {
+  GeminiVisionWireReview,
+  ParseVisionOutcome,
+  ParseVisionContext,
+} from "./schemas/vision-audit-schema.js";
+
+// Visual Regression & Perceptual Change Detection (Task 6.3)
+export * from "./visual-diff/index.js";
+

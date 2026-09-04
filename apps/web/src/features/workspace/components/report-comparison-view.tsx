@@ -15,6 +15,7 @@ import {
   CreateWorkItemModal,
   type PrefillSourceData,
 } from "../../work-items/components/create-work-item-modal";
+import { VisualRegressionCard } from "../../audits/components/visual-regression-card.js";
 
 export interface ReportComparisonViewProps {
   projectId: string;
@@ -60,7 +61,7 @@ export function ReportComparisonView({
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<
-    "regressions" | "new" | "resolved" | "changed" | "signals" | "improvements"
+    "regressions" | "new" | "resolved" | "changed" | "signals" | "improvements" | "visual"
   >("regressions");
 
   const [prefillData, setPrefillData] = useState<PrefillSourceData | null>(null);
@@ -490,6 +491,29 @@ export function ReportComparisonView({
               >
                 Improvements ({diff.improvements.length})
               </button>
+              <button
+                type="button"
+                data-testid="tab-visual-changes"
+                onClick={() => setActiveTab("visual")}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-medium transition ${
+                  activeTab === "visual"
+                    ? "bg-neutral-800 text-neutral-100"
+                    : "text-neutral-400 hover:text-neutral-200"
+                }`}
+              >
+                Visual Changes
+                {data?.visualDiffSummary?.hasVisualDiff && (
+                  <span
+                    className={`rounded-full px-1.5 py-0.2 text-[10px] font-semibold ${
+                      data.visualDiffSummary?.isMeaningfulChange
+                        ? "border border-amber-500/30 bg-amber-950/60 text-amber-300"
+                        : "bg-neutral-800 text-neutral-400"
+                    }`}
+                  >
+                    {Math.round(data.visualDiffSummary?.maxChangeScore ?? 0)}%
+                  </span>
+                )}
+              </button>
             </div>
 
             {/* Tab Contents */}
@@ -724,6 +748,17 @@ export function ReportComparisonView({
                     </div>
                   ))
                 )
+              )}
+
+              {activeTab === "visual" && (
+                <div data-testid="visual-changes-tab-content">
+                  <VisualRegressionCard
+                    projectId={projectId}
+                    pageId={page.id}
+                    auditRunId={currentRunId}
+                    compareRunId={selectedCompareRunId ?? undefined}
+                  />
+                </div>
               )}
             </div>
           </div>

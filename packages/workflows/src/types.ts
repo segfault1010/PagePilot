@@ -7,8 +7,17 @@ import type {
   MonitoredPage,
   Report,
   Role,
+  AuditScreenshotMetadata,
+  ScreenshotMimeType,
+  VisualAnalysisReview,
+  VisualDiffResult,
 } from "@pagepilot/contracts";
-import type { AnalysisOutcome } from "@pagepilot/audit-engine";
+import type {
+  AnalysisOutcome,
+  BrowserCaptureProvider,
+  VisionAuditProvider,
+  VisualDiffEngine,
+} from "@pagepilot/audit-engine";
 import type { Inngest } from "inngest";
 
 /**
@@ -196,10 +205,68 @@ export interface WorkflowPersistenceStore {
 }
 
 /**
+ * Screenshot storage and persistence interface for durable visual capture step.
+ */
+export interface WorkflowScreenshotStore {
+  listScreenshots(auditRunId: string): Promise<AuditScreenshotMetadata[]>;
+  uploadScreenshot(params: {
+    storagePath: string;
+    buffer: Buffer;
+    mimeType: ScreenshotMimeType;
+  }): Promise<{ storagePath: string }>;
+  persistScreenshotMetadata(
+    metadata: Omit<AuditScreenshotMetadata, "id" | "createdAt" | "signedUrl">
+  ): Promise<AuditScreenshotMetadata>;
+  downloadScreenshot?(storagePath: string): Promise<Buffer | null>;
+}
+
+/**
+ * Visual Analysis storage and persistence interface for durable vision review step.
+ */
+export interface WorkflowVisualAnalysisStore {
+  getVisualReview(auditRunId: string): Promise<VisualAnalysisReview | null>;
+  persistVisualReview(review: VisualAnalysisReview): Promise<VisualAnalysisReview>;
+  recordVisualReviewFailure?(params: {
+    auditRunId: string;
+    organizationId?: string;
+    projectId?: string;
+    monitoredPageId?: string;
+    errorMessage: string;
+  }): Promise<void>;
+}
+
+/**
+ * Visual Regression storage and persistence interface for durable diff step.
+ */
+export interface WorkflowVisualDiffStore {
+  getVisualDiffsForRun(auditRunId: string): Promise<VisualDiffResult[]>;
+  persistVisualDiff(diff: VisualDiffResult): Promise<VisualDiffResult>;
+  getPreviousAuditScreenshots(
+    organizationId: string,
+    monitoredPageId: string,
+    currentRunId: string,
+    compareRunId?: string
+  ): Promise<AuditScreenshotMetadata[]>;
+  recordVisualDiffFailure?(params: {
+    auditRunId: string;
+    organizationId?: string;
+    projectId?: string;
+    monitoredPageId?: string;
+    errorMessage: string;
+  }): Promise<void>;
+}
+
+/**
  * Dependencies injected into the durable audit workflow factory.
  */
 export interface WorkflowDeps {
   auditStore: WorkflowPersistenceStore;
+  screenshotStore?: WorkflowScreenshotStore;
+  visualAnalysisStore?: WorkflowVisualAnalysisStore;
+  visualDiffStore?: WorkflowVisualDiffStore;
+  visualDiffEngine?: VisualDiffEngine;
+  browserCapture?: BrowserCaptureProvider;
+  visionAuditor?: VisionAuditProvider;
   analyzeUrl?: (url: string) => Promise<AnalysisOutcome>;
   client?: Inngest;
 }

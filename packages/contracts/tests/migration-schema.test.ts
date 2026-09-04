@@ -335,4 +335,114 @@ describe("Supabase Multi-Tenant SQL Migration Validation", () => {
     expect(analyticsSql).toContain("public.get_org_role(organization_id) IN ('owner', 'admin', 'member')");
     expect(analyticsSql).toContain("public.is_org_admin_or_owner(organization_id)");
   });
+
+  it("defines audit_screenshots table with forced RLS, cascades, uniqueness, and private storage bucket", () => {
+    const screenshotSql = getMigrationSql("20260906120000_audit_screenshots.sql");
+
+    expect(screenshotSql).toContain("CREATE TABLE IF NOT EXISTS public.audit_screenshots");
+
+    // Foreign keys & cascades
+    expect(screenshotSql).toMatch(/organization_id\s+UUID\s+NOT\s+NULL\s+REFERENCES\s+public\.organizations\(id\)\s+ON\s+DELETE\s+CASCADE/i);
+    expect(screenshotSql).toMatch(/project_id\s+UUID\s+NOT\s+NULL\s+REFERENCES\s+public\.projects\(id\)\s+ON\s+DELETE\s+CASCADE/i);
+    expect(screenshotSql).toMatch(/monitored_page_id\s+UUID\s+NOT\s+NULL\s+REFERENCES\s+public\.monitored_pages\(id\)\s+ON\s+DELETE\s+CASCADE/i);
+    expect(screenshotSql).toMatch(/audit_run_id\s+UUID\s+NOT\s+NULL\s+REFERENCES\s+public\.audit_runs\(id\)\s+ON\s+DELETE\s+CASCADE/i);
+    expect(screenshotSql).toMatch(/audit_report_id\s+UUID\s+REFERENCES\s+public\.audit_reports\(id\)\s+ON\s+DELETE\s+SET\s+NULL/i);
+
+    // Check constraints & uniqueness
+    expect(screenshotSql).toContain("CHECK (device_type IN ('desktop', 'mobile'))");
+    expect(screenshotSql).toContain("CHECK (capture_type IN ('viewport', 'full_page'))");
+    expect(screenshotSql).toContain("CHECK (mime_type IN ('image/webp', 'image/png', 'image/jpeg'))");
+    expect(screenshotSql).toContain("height <= 4000");
+    expect(screenshotSql).toContain("CONSTRAINT uq_audit_screenshots_run_device_capture UNIQUE (audit_run_id, device_type, capture_type)");
+
+    // RLS enabled and forced
+    expect(screenshotSql).toContain("ALTER TABLE public.audit_screenshots ENABLE ROW LEVEL SECURITY;");
+    expect(screenshotSql).toContain("ALTER TABLE public.audit_screenshots FORCE ROW LEVEL SECURITY;");
+
+    // RLS policies
+    expect(screenshotSql).toContain("audit_screenshots_select_policy");
+    expect(screenshotSql).toContain("audit_screenshots_insert_policy");
+    expect(screenshotSql).toContain("audit_screenshots_update_policy");
+    expect(screenshotSql).toContain("audit_screenshots_delete_policy");
+
+    // Proper role gating on insert/update/delete
+    expect(screenshotSql).toContain("public.get_org_role(organization_id) IN ('owner', 'admin', 'member')");
+    expect(screenshotSql).toContain("public.is_org_admin_or_owner(organization_id)");
+
+    // Private storage bucket insertion
+    expect(screenshotSql).toContain("INSERT INTO storage.buckets");
+    expect(screenshotSql).toContain("'audit-screenshots'");
+    expect(screenshotSql).toContain("false"); // public = false
+  });
+
+  it("defines visual_analysis_reviews table with forced RLS, cascades, uniqueness, and role policies", () => {
+    const visualSql = getMigrationSql("20260907120000_visual_analysis_reviews.sql");
+
+    expect(visualSql).toContain("CREATE TABLE IF NOT EXISTS public.visual_analysis_reviews");
+
+    // Foreign keys & cascades
+    expect(visualSql).toMatch(/organization_id\s+UUID\s+NOT\s+NULL\s+REFERENCES\s+public\.organizations\(id\)\s+ON\s+DELETE\s+CASCADE/i);
+    expect(visualSql).toMatch(/project_id\s+UUID\s+NOT\s+NULL\s+REFERENCES\s+public\.projects\(id\)\s+ON\s+DELETE\s+CASCADE/i);
+    expect(visualSql).toMatch(/monitored_page_id\s+UUID\s+NOT\s+NULL\s+REFERENCES\s+public\.monitored_pages\(id\)\s+ON\s+DELETE\s+CASCADE/i);
+    expect(visualSql).toMatch(/audit_run_id\s+UUID\s+NOT\s+NULL\s+REFERENCES\s+public\.audit_runs\(id\)\s+ON\s+DELETE\s+CASCADE/i);
+    expect(visualSql).toMatch(/audit_report_id\s+UUID\s+REFERENCES\s+public\.audit_reports\(id\)\s+ON\s+DELETE\s+SET\s+NULL/i);
+
+    // Uniqueness & check constraints
+    expect(visualSql).toContain("CONSTRAINT uq_visual_reviews_run UNIQUE (audit_run_id)");
+    expect(visualSql).toContain("CHECK (status IN ('completed', 'failed', 'skipped'))");
+
+    // RLS enabled and forced
+    expect(visualSql).toContain("ALTER TABLE public.visual_analysis_reviews ENABLE ROW LEVEL SECURITY;");
+    expect(visualSql).toContain("ALTER TABLE public.visual_analysis_reviews FORCE ROW LEVEL SECURITY;");
+
+    // RLS policies
+    expect(visualSql).toContain("visual_reviews_select_policy");
+    expect(visualSql).toContain("visual_reviews_insert_policy");
+    expect(visualSql).toContain("visual_reviews_update_policy");
+    expect(visualSql).toContain("visual_reviews_delete_policy");
+
+    // Proper role gating on insert/update/delete
+    expect(visualSql).toContain("public.get_org_role(organization_id) IN ('owner', 'admin', 'member')");
+    expect(visualSql).toContain("public.is_org_admin_or_owner(organization_id)");
+  });
+
+  it("defines visual_diff_results table with forced RLS, unique index, and screenshot perceptual hash columns", () => {
+    const diffSql = getMigrationSql("20260908120000_visual_diff_results.sql");
+
+    // Screenshot table enhancement
+    expect(diffSql).toContain("ALTER TABLE public.audit_screenshots");
+    expect(diffSql).toContain("ADD COLUMN IF NOT EXISTS perceptual_hash TEXT");
+    expect(diffSql).toContain("ADD COLUMN IF NOT EXISTS block_hashes JSONB");
+
+    // Table creation
+    expect(diffSql).toContain("CREATE TABLE IF NOT EXISTS public.visual_diff_results");
+
+    // Foreign keys & cascades
+    expect(diffSql).toMatch(/organization_id\s+UUID\s+NOT\s+NULL\s+REFERENCES\s+public\.organizations\(id\)\s+ON\s+DELETE\s+CASCADE/i);
+    expect(diffSql).toMatch(/project_id\s+UUID\s+NOT\s+NULL\s+REFERENCES\s+public\.projects\(id\)\s+ON\s+DELETE\s+CASCADE/i);
+    expect(diffSql).toMatch(/monitored_page_id\s+UUID\s+NOT\s+NULL\s+REFERENCES\s+public\.monitored_pages\(id\)\s+ON\s+DELETE\s+CASCADE/i);
+    expect(diffSql).toMatch(/current_audit_run_id\s+UUID\s+NOT\s+NULL\s+REFERENCES\s+public\.audit_runs\(id\)\s+ON\s+DELETE\s+CASCADE/i);
+    expect(diffSql).toMatch(/baseline_audit_run_id\s+UUID\s+REFERENCES\s+public\.audit_runs\(id\)\s+ON\s+DELETE\s+SET\s+NULL/i);
+
+    // Check constraints & uniqueness
+    expect(diffSql).toContain("CHECK (device_type IN ('desktop', 'mobile'))");
+    expect(diffSql).toContain("CHECK (capture_type IN ('viewport', 'full_page'))");
+    expect(diffSql).toContain("CHECK (status IN ('completed', 'baseline', 'failed', 'skipped'))");
+    expect(diffSql).toContain("CHECK (change_severity IN ('negligible', 'minor', 'moderate', 'significant', 'major'))");
+    expect(diffSql).toContain("CREATE UNIQUE INDEX IF NOT EXISTS uq_visual_diff_runs");
+
+    // RLS enabled and forced
+    expect(diffSql).toContain("ALTER TABLE public.visual_diff_results ENABLE ROW LEVEL SECURITY;");
+    expect(diffSql).toContain("ALTER TABLE public.visual_diff_results FORCE ROW LEVEL SECURITY;");
+
+    // RLS policies
+    expect(diffSql).toContain("visual_diff_select_policy");
+    expect(diffSql).toContain("visual_diff_insert_policy");
+    expect(diffSql).toContain("visual_diff_update_policy");
+    expect(diffSql).toContain("visual_diff_delete_policy");
+
+    // Role gating
+    expect(diffSql).toContain("public.get_org_role(organization_id) IN ('owner', 'admin', 'member')");
+    expect(diffSql).toContain("public.is_org_admin_or_owner(organization_id)");
+  });
 });

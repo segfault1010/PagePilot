@@ -3,9 +3,17 @@ import {
   ALERT_CREATED_EVENT,
   AUDIT_REQUESTED_EVENT,
   auditRequestedPayloadSchema,
+  buildScreenshotStoragePath,
+  SCREENSHOT_STORAGE_BUCKET,
 } from "@pagepilot/contracts";
 import type { AlertCreatedEvent } from "@pagepilot/contracts";
-import { analyzeTarget, computeAuditDiff } from "@pagepilot/audit-engine";
+import {
+  analyzeTarget,
+  computeAuditDiff,
+  createGeminiVisionAuditor,
+  PlaywrightBrowserCaptureProvider,
+  VisualDiffEngine,
+} from "@pagepilot/audit-engine";
 import { inngestClient } from "../client.js";
 import type { WorkflowDeps } from "../types.js";
 import { evaluateAuditAlerts } from "../alerts/alert-evaluation.js";
@@ -198,7 +206,364 @@ export function createAuditWorkflow(deps: WorkflowDeps) {
       });
 
       // -----------------------------------------------------------------------
-      // Step 4: Evaluate regressions and dispatch alert notifications
+      // Step 4: Capture Page Screenshots (Decoupled Visual Evidence)
+      // -----------------------------------------------------------------------
+      const visualOutcome = await step.run("capture-page-screenshots", async () => {
+        if (!analysisResult.ok || !deps.screenshotStore) {
+          return {
+            status: "skipped" as const,
+            reason: !analysisResult.ok ? ("audit_failed" as const) : ("no_store" as const),
+          };
+        }
+
+        try {
+          // Idempotency: skip if screenshots already exist for this run
+          const existing = await deps.screenshotStore.listScreenshots(claimResult.runId);
+          if (existing && existing.length >= 2) {
+            return {
+              status: "already_completed" as const,
+              count: existing.length,
+            };
+          }
+
+          const browserProvider =
+            deps.browserCapture ?? new PlaywrightBrowserCaptureProvider();
+
+          const targetCaptureUrl =
+            analysisResult.report.source.finalUrl || claimResult.targetUrl;
+
+          const captureResult = await browserProvider.capture(targetCaptureUrl, {
+            viewports: ["desktop", "mobile"],
+            captureType: "viewport",
+          });
+
+          const savedScreenshots = [];
+          for (const cap of captureResult.captures) {
+            const ext =
+              cap.mimeType === "image/webp"
+                ? "webp"
+                : cap.mimeType === "image/jpeg"
+                  ? "jpg"
+                  : "png";
+
+            const storagePath = buildScreenshotStoragePath({
+              organizationId: claimResult.orgId,
+              projectId: claimResult.projectId,
+              monitoredPageId: claimResult.pageId,
+              auditRunId: claimResult.runId,
+              deviceType: cap.deviceType,
+              captureType: cap.captureType,
+              extension: ext,
+            });
+
+            await deps.screenshotStore.uploadScreenshot({
+              storagePath,
+              buffer: cap.buffer,
+              mimeType: cap.mimeType,
+            });
+
+            const meta = await deps.screenshotStore.persistScreenshotMetadata({
+              organizationId: claimResult.orgId,
+              projectId: claimResult.projectId,
+              monitoredPageId: claimResult.pageId,
+              auditRunId: claimResult.runId,
+              auditReportId:
+                persistResult.status === "completed"
+                  ? persistResult.auditReportId
+                  : undefined,
+              deviceType: cap.deviceType,
+              captureType: cap.captureType,
+              storagePath,
+              storageBucket: SCREENSHOT_STORAGE_BUCKET,
+              fileSizeBytes: cap.fileSizeBytes,
+              mimeType: cap.mimeType,
+              width: cap.width,
+              height: cap.height,
+              capturedAt: cap.capturedAt,
+              perceptualHash: cap.perceptualHash,
+              blockHashes: cap.blockHashes,
+            });
+
+            savedScreenshots.push(meta);
+          }
+
+          return {
+            status: "completed" as const,
+            count: savedScreenshots.length,
+          };
+        } catch (visualErr: unknown) {
+          // Critical Invariant 10: Screenshot failure must NEVER fail or invalidate the static audit
+          const message =
+            visualErr instanceof Error ? visualErr.message : String(visualErr);
+          console.warn(
+            `[workflows/audit-workflow] capture-page-screenshots isolated failure: ${message}`
+          );
+          return {
+            status: "failed" as const,
+            error: message,
+          };
+        }
+      });
+
+      // -----------------------------------------------------------------------
+      // Step 5: Review Visual Hierarchy (Multimodal Vision Analysis - Task 6.2)
+      // -----------------------------------------------------------------------
+      const visualReviewOutcome = await step.run("review-visual-hierarchy", async () => {
+        const hasScreenshots =
+          visualOutcome.status === "completed" ||
+          visualOutcome.status === "already_completed";
+
+        if (
+          !analysisResult.ok ||
+          !hasScreenshots ||
+          !deps.screenshotStore ||
+          !deps.visualAnalysisStore
+        ) {
+          return {
+            status: "skipped" as const,
+            reason: !analysisResult.ok
+              ? ("audit_failed" as const)
+              : !hasScreenshots
+                ? ("no_screenshots" as const)
+                : ("no_store" as const),
+          };
+        }
+
+        try {
+          // Idempotency check: skip if review already exists
+          const existing = await deps.visualAnalysisStore.getVisualReview(claimResult.runId);
+          if (existing && existing.status === "completed") {
+            return {
+              status: "already_completed" as const,
+              findingsCount: existing.findings.length,
+            };
+          }
+
+          const screenshots = await deps.screenshotStore.listScreenshots(claimResult.runId);
+          const desktopMeta = screenshots.find((s) => s.deviceType === "desktop");
+          const mobileMeta = screenshots.find((s) => s.deviceType === "mobile");
+
+          if (!desktopMeta && !mobileMeta) {
+            return {
+              status: "skipped" as const,
+              reason: "no_screenshots" as const,
+            };
+          }
+
+          let desktopBuffer: Buffer | null = null;
+          let mobileBuffer: Buffer | null = null;
+
+          if (desktopMeta && deps.screenshotStore.downloadScreenshot) {
+            desktopBuffer = await deps.screenshotStore.downloadScreenshot(desktopMeta.storagePath);
+          }
+          if (mobileMeta && deps.screenshotStore.downloadScreenshot) {
+            mobileBuffer = await deps.screenshotStore.downloadScreenshot(mobileMeta.storagePath);
+          }
+
+          if (!desktopBuffer && !mobileBuffer) {
+            return {
+              status: "skipped" as const,
+              reason: "buffers_unavailable" as const,
+            };
+          }
+
+          const visionAuditor = deps.visionAuditor ?? createGeminiVisionAuditor();
+
+          const visualReview = await visionAuditor.runVisualReview({
+            auditRunId: claimResult.runId,
+            auditReportId:
+              persistResult.status === "completed"
+                ? persistResult.auditReportId
+                : undefined,
+            targetUrl: analysisResult.report.source.finalUrl || claimResult.targetUrl,
+            pageTitle: analysisResult.report.source.title,
+            desktopScreenshot: desktopBuffer && desktopMeta
+              ? {
+                  buffer: desktopBuffer,
+                  mimeType: desktopMeta.mimeType,
+                  width: desktopMeta.width,
+                  height: desktopMeta.height,
+                  screenshotId: desktopMeta.id,
+                }
+              : undefined,
+            mobileScreenshot: mobileBuffer && mobileMeta
+              ? {
+                  buffer: mobileBuffer,
+                  mimeType: mobileMeta.mimeType,
+                  width: mobileMeta.width,
+                  height: mobileMeta.height,
+                  screenshotId: mobileMeta.id,
+                }
+              : undefined,
+          });
+
+          const persisted = await deps.visualAnalysisStore.persistVisualReview({
+            ...visualReview,
+            organizationId: claimResult.orgId,
+            projectId: claimResult.projectId,
+            monitoredPageId: claimResult.pageId,
+            auditReportId:
+              persistResult.status === "completed"
+                ? persistResult.auditReportId
+                : null,
+          });
+
+          return {
+            status: "completed" as const,
+            findingsCount: persisted.findings.length,
+          };
+        } catch (visionErr: unknown) {
+          // Critical Invariant: Vision failure must NEVER fail or invalidate the static audit
+          const message =
+            visionErr instanceof Error ? visionErr.message : String(visionErr);
+          console.warn(
+            `[workflows/audit-workflow] review-visual-hierarchy isolated failure: ${message}`
+          );
+          if (deps.visualAnalysisStore.recordVisualReviewFailure) {
+            try {
+              await deps.visualAnalysisStore.recordVisualReviewFailure({
+                auditRunId: claimResult.runId,
+                organizationId: claimResult.orgId,
+                projectId: claimResult.projectId,
+                monitoredPageId: claimResult.pageId,
+                errorMessage: message,
+              });
+            } catch {
+              // Ignore failure recording error
+            }
+          }
+          return {
+            status: "failed" as const,
+            error: message,
+          };
+        }
+      });
+
+      // -----------------------------------------------------------------------
+      // Step 6: Detect Visual Regression (Deterministic Perceptual Diff - Task 6.3)
+      // -----------------------------------------------------------------------
+      const visualDiffOutcome = await step.run("detect-visual-regression", async () => {
+        const hasScreenshots =
+          visualOutcome.status === "completed" ||
+          visualOutcome.status === "already_completed";
+
+        if (
+          !analysisResult.ok ||
+          !hasScreenshots ||
+          !deps.screenshotStore ||
+          !deps.visualDiffStore
+        ) {
+          return {
+            status: "skipped" as const,
+            reason: !analysisResult.ok
+              ? ("audit_failed" as const)
+              : !hasScreenshots
+                ? ("no_screenshots" as const)
+                : ("no_store" as const),
+          };
+        }
+
+        try {
+          // Idempotency check: skip if diffs already exist
+          const existing = await deps.visualDiffStore.getVisualDiffsForRun(claimResult.runId);
+          if (existing && existing.length >= 2) {
+            return {
+              status: "already_completed" as const,
+              count: existing.length,
+            };
+          }
+
+          const currentScreenshots = await deps.screenshotStore.listScreenshots(claimResult.runId);
+          if (!currentScreenshots || currentScreenshots.length === 0) {
+            return {
+              status: "skipped" as const,
+              reason: "no_screenshots" as const,
+            };
+          }
+
+          // Load previous compatible screenshot baseline
+          const baselineScreenshots = await deps.visualDiffStore.getPreviousAuditScreenshots(
+            claimResult.orgId,
+            claimResult.pageId,
+            claimResult.runId,
+            payload.compareRunId || undefined
+          );
+
+          const diffEngine = deps.visualDiffEngine ?? new VisualDiffEngine();
+          const savedDiffs = [];
+
+          for (const currentCap of currentScreenshots) {
+            const baselineCap = baselineScreenshots.find(
+              (b) =>
+                b.deviceType === currentCap.deviceType &&
+                b.captureType === currentCap.captureType
+            );
+
+            const diffResult = diffEngine.compare({
+              organizationId: claimResult.orgId,
+              projectId: claimResult.projectId,
+              monitoredPageId: claimResult.pageId,
+              current: {
+                auditRunId: claimResult.runId,
+                screenshotId: currentCap.id,
+                deviceType: currentCap.deviceType,
+                captureType: currentCap.captureType,
+                width: currentCap.width,
+                height: currentCap.height,
+                perceptualHash: currentCap.perceptualHash,
+                blockHashes: currentCap.blockHashes,
+              },
+              baseline: baselineCap
+                ? {
+                    auditRunId: baselineCap.auditRunId,
+                    screenshotId: baselineCap.id,
+                    deviceType: baselineCap.deviceType,
+                    captureType: baselineCap.captureType,
+                    width: baselineCap.width,
+                    height: baselineCap.height,
+                    perceptualHash: baselineCap.perceptualHash,
+                    blockHashes: baselineCap.blockHashes,
+                  }
+                : null,
+            });
+
+            const persisted = await deps.visualDiffStore.persistVisualDiff(diffResult);
+            savedDiffs.push(persisted);
+          }
+
+          return {
+            status: "completed" as const,
+            count: savedDiffs.length,
+          };
+        } catch (diffErr: unknown) {
+          // Critical Invariant: Visual diff failure must NEVER fail or invalidate static audit or alerts
+          const message =
+            diffErr instanceof Error ? diffErr.message : String(diffErr);
+          console.warn(
+            `[workflows/audit-workflow] detect-visual-regression isolated failure: ${message}`
+          );
+          if (deps.visualDiffStore.recordVisualDiffFailure) {
+            try {
+              await deps.visualDiffStore.recordVisualDiffFailure({
+                auditRunId: claimResult.runId,
+                organizationId: claimResult.orgId,
+                projectId: claimResult.projectId,
+                monitoredPageId: claimResult.pageId,
+                errorMessage: message,
+              });
+            } catch {
+              // Ignore failure recording error
+            }
+          }
+          return {
+            status: "failed" as const,
+            error: message,
+          };
+        }
+      });
+
+      // -----------------------------------------------------------------------
+      // Step 7: Evaluate regressions and dispatch alert notifications
       // -----------------------------------------------------------------------
       const alertOutcome = await step.run("evaluate-and-dispatch-alerts", async () => {
         if (!analysisResult.ok) {
@@ -298,6 +663,13 @@ export function createAuditWorkflow(deps: WorkflowDeps) {
         status: persistResult.status,
         auditReportId: persistResult.auditReportId,
         overallScore: persistResult.overallScore,
+        visualCapturesCount:
+          visualOutcome.status === "completed" ? visualOutcome.count : 0,
+        visualStatus: visualOutcome.status,
+        visualReviewStatus: visualReviewOutcome.status,
+        visualDiffStatus: visualDiffOutcome.status,
+        visualDiffCount:
+          visualDiffOutcome.status === "completed" ? visualDiffOutcome.count : 0,
         dispatchedAlertsCount: alertOutcome.dispatchedAlertsCount,
       };
     },
